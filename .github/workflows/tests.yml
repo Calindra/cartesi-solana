@@ -1,0 +1,28 @@
+# yaml-language-server: =https://json.schemastore.org/github-workflow.json
+---
+name: "Build Cartesi Solana Lib"
+on:
+    pull_request:
+        paths:
+            - ".github/workflows/**"
+            - "src/**"
+            - "tests/**"
+            - "!**/*.md"
+    push:
+        tags:
+            - v*
+        branches:
+            - develop
+            - main
+            - feature/*
+jobs:
+    just-test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - uses: actions-rs/toolchain@v1
+              with:
+                toolchain: nightly
+            - run: |
+                cd ${{ github.workspace }}
+                RUST_BACKTRACE=1 cargo test -- --nocapture --test-threads 1
