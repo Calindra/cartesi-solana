@@ -8,10 +8,12 @@ pub fn create_account_manager() -> AccountManager {
     let result = std::env::var("SOLANA_DATA_PATH");
     match result {
         Ok(path) => {
+            println!("base path from env {}", path);
             account_manager.set_base_path(path);
             return account_manager;
         }
         Err(_) => {
+            println!("default base path");
             account_manager.set_base_path("./".to_owned());
             return account_manager;
         }
@@ -33,10 +35,10 @@ impl AccountManager {
         &self,
         pubkey: &Pubkey,
     ) -> std::result::Result<Vec<(Pubkey, AccountFileData)>, Box<dyn std::error::Error>> {
-        let paths = fs::read_dir(&self.base_path).unwrap();
+        let paths = fs::read_dir(&self.base_path)?;
         let mut result: Vec<(Pubkey, AccountFileData)> = vec![];
         for path in paths {
-            let file_path = path.unwrap().path();
+            let file_path = path?.path();
             let account_info = self.read_account_file(file_path.to_str().unwrap().to_string())?;
             if account_info.owner == *pubkey {
                 let key = file_path.file_name().unwrap().to_str().unwrap();

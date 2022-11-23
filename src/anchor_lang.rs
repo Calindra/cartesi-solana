@@ -149,6 +149,8 @@ pub mod solana_program {
 
 #[cfg(not(target_arch = "bpf"))]
 pub mod prelude {
+    use std::str::FromStr;
+
     pub use anchor_lang::prelude::*;
     use anchor_lang::solana_program::sysvar::SysvarId;
     use serde::{Deserialize, Serialize};
@@ -177,7 +179,7 @@ pub mod prelude {
     }
     impl SysvarId for Rent {
         fn id() -> Pubkey {
-            Pubkey::default()
+            Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap()
         }
         fn check_id(_: &Pubkey) -> bool {
             true
