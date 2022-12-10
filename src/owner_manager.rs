@@ -1,8 +1,6 @@
-use anchor_lang::prelude::AccountInfo;
 use anchor_lang::prelude::Pubkey;
 use once_cell::sync::Lazy;
 pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
-pub static mut ACCOUNT_INFO_DATA: Lazy<Vec<Vec<u8>>> = Lazy::new(|| vec![]);
 
 /*
 #0 170.8 error[E0015]: cannot call non-const fn `Mutex::<Vec<(*mut &Pubkey, Pubkey)>>::new` in statics
@@ -18,15 +16,6 @@ pub static mut POINTERS: Lazy<Vec<(*mut &Pubkey, Pubkey)>> = Lazy::new(|| vec![]
 pub fn add_ptr(p: *mut Pubkey, key: Pubkey) {
     unsafe {
         POINTERS.push((p as *mut &Pubkey, key));
-    }
-}
-
-pub fn set_data_size(account_info: &AccountInfo, size: usize) {
-    unsafe {
-        let tot = ACCOUNT_INFO_DATA.len();
-        let data = vec![0; size];
-        ACCOUNT_INFO_DATA.push(data);
-        account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
     }
 }
 
@@ -48,7 +37,7 @@ pub fn change_owner<'a>(key: Pubkey, new_owner: Pubkey) {
                     new_owner
                 );
             }
-            i = i + 1;
+            i += 1;
         }
     }
 }

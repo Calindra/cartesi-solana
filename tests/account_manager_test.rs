@@ -1,7 +1,7 @@
-use std::{time::{SystemTime, UNIX_EPOCH}, fs, str::FromStr};
+use std::{time::{SystemTime, UNIX_EPOCH}, fs, str::FromStr, cell::RefCell, rc::Rc};
 
-use anchor_lang::prelude::Pubkey;
-use cartesi_solana::{owner_manager, account_manager::{create_account_manager, AccountFileData}};
+use anchor_lang::prelude::{Pubkey, AccountInfo};
+use cartesi_solana::{owner_manager, account_manager::{create_account_manager, AccountFileData, self}};
 
 fn setup() {
     println!("\n\n***** setup *****\n");
@@ -85,4 +85,25 @@ fn it_should_list_all_program_accounts() {
     let account_files = account_manager.find_program_accounts(&pubkey).unwrap();
     assert_eq!(account_files.len(), 1);
     assert_eq!(account_files[0].0, file_key);
+}
+
+
+#[test]
+fn it_should_set_data_size() {
+    let owner: Pubkey = Pubkey::default();
+    let key = &Pubkey::default();
+    let mut lamports: u64 = 1000;
+    let mut info_data: Vec<u8> = Vec::new();
+    let account_info: AccountInfo = AccountInfo {
+        key,
+        is_signer: true,
+        is_writable: true,
+        lamports: Rc::new(RefCell::new(&mut lamports)),
+        data: Rc::new(RefCell::new(&mut info_data)),
+        owner: &owner,
+        executable: false,
+        rent_epoch: 0,
+    };
+    account_manager::set_data_size(&account_info, 10);
+    assert_eq!(account_info.data.borrow().len(), 10);
 }

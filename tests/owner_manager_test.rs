@@ -155,23 +155,3 @@ fn it_should_change_the_key() {
         "2QB8wEBJ8jjMQuZPvj3jaZP7JJb5j21u4xbxTnwsZRfv"
     );
 }
-
-#[test]
-fn it_should_set_data_size() {
-    let owner: Pubkey = Pubkey::default();
-    let key = &Pubkey::default();
-    let mut lamports: u64 = 1000;
-    let mut info_data: Vec<u8> = Vec::new();
-    let account_info: AccountInfo = AccountInfo {
-        key,
-        is_signer: true,
-        is_writable: true,
-        lamports: Rc::new(RefCell::new(&mut lamports)),
-        data: Rc::new(RefCell::new(&mut info_data)),
-        owner: &owner,
-        executable: false,
-        rent_epoch: 0,
-    };
-    owner_manager::set_data_size(&account_info, 10);
-    assert_eq!(account_info.data.borrow().len(), 10);
-}

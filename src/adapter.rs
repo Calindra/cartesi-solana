@@ -1,11 +1,11 @@
-use crate::account_manager::{create_account_manager, AccountFileData};
+use crate::account_manager::{create_account_info, create_account_manager, AccountFileData};
 use crate::transaction::Signature;
 use crate::{owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
 use serde::{Deserialize, Serialize};
 use std::io;
-use std::{cell::RefCell, rc::Rc, str::FromStr};
+use std::str::FromStr;
 
 pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     assert!(
@@ -19,23 +19,21 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     Pubkey::new(&bytes)
 }
 
-pub fn call_solana_program_lifetime2<'a>(
-    entry: &'a fn(&'a Pubkey, &'a [AccountInfo<'a>], &[u8]) -> ProgramResult,
-) -> io::Result<()> {
+pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>) {
     #[cfg(not(target_arch = "bpf"))]
     {
         let mut msg_sender = String::new();
-        io::stdin().read_line(&mut msg_sender)?;
+        io::stdin().read_line(&mut msg_sender).unwrap();
         let mut payload = String::new();
-        io::stdin().read_line(&mut payload)?;
+        io::stdin().read_line(&mut payload).unwrap();
         let mut instruction_index = String::new();
-        io::stdin().read_line(&mut instruction_index)?;
+        io::stdin().read_line(&mut instruction_index).unwrap();
         let instruction_index: usize = instruction_index
             .trim()
             .parse()
             .expect("Input is not an integer");
         let mut timestamp = String::new();
-        io::stdin().read_line(&mut timestamp)?;
+        io::stdin().read_line(&mut timestamp).unwrap();
 
         let timestamp: i64 = timestamp
             .trim()
@@ -45,13 +43,12 @@ pub fn call_solana_program_lifetime2<'a>(
             crate::anchor_lang::TIMESTAMP = timestamp;
         }
 
-        call_smart_contract_base64_lifetime2(
+        return parse_processor_args(
             &payload[..(&payload.len() - 1)],
             &msg_sender[..(&msg_sender.len() - 1)],
             instruction_index,
         );
     }
-    Ok(())
 }
 
 pub fn call_solana_program(
@@ -118,11 +115,11 @@ pub struct AccountJson {
     lamports: String,
 }
 
-fn check_signature(pubkey: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
-    sender_bytes == &pubkey.to_bytes()[12..]
+fn check_signature(key: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
+    sender_bytes == &key.to_bytes()[12..]
 }
 
-pub fn call_smart_contract_base64_lifetime2<'a>(
+pub fn parse_processor_args<'a>(
     payload: &str,
     msg_sender: &str,
     instruction_index: usize,
@@ -139,45 +136,37 @@ pub fn call_smart_contract_base64_lifetime2<'a>(
         .collect();
     let tx_instruction = &tx.message.instructions[instruction_index];
     let mut accounts: Vec<AccountInfo> = Vec::new();
-    let mut params = Vec::new();
     let mut i = 0;
-    for pubkey in tx.message.account_keys.iter() {
-        println!("loading pk = {:?}", pubkey);
-        let (a, b, c) = load_account_info_data(&pubkey);
+    for key in tx.message.account_keys.iter() {
+        println!("loading account with key = {:?}", key);
+        let (data, lamports, owner) = load_account_info_data(&key);
         let mut is_signer = false;
         if tx.signatures.len() > i {
             let signature = &tx.signatures[i];
-            is_signer = check_signature(&pubkey, &sender_bytes, &signature);
+            is_signer = check_signature(&key, &sender_bytes, &signature);
         }
-        params.push((a, b, c, pubkey.to_owned(), is_signer));
+        let is_writable = true; // todo
+        let executable = true;
+        let account_info = create_account_info(
+            key,
+            is_signer,
+            is_writable,
+            lamports,
+            data,
+            owner,
+            executable,
+        );
+        accounts.push(account_info);
         i = i + 1;
     }
-    for param in params.iter_mut() {
-        
-
-        let is_signer = &param.4;
-        let is_writable = true;
-        let executable = true;
-        // let account_info = AccountInfo {
-        //     key: &param.3,
-        //     is_signer: *is_signer,
-        //     is_writable,
-        //     lamports: Rc::new(RefCell::new(&mut param.1)),
-        //     data: Rc::new(RefCell::new(&mut param.0)),
-        //     owner: &param.2,
-        //     executable,
-        //     rent_epoch: 1,
-        // };
-        let account_info = AccountInfo::new(&param.3, *is_signer, is_writable, &mut param.1, &mut param.0, &param.2, executable, 1);
-        accounts.push(account_info);
-    }
     let pidx: usize = (tx_instruction.program_id_index).into();
+    let program_id: &Pubkey = accounts[pidx].key;
+
     println!(
         "tx_instruction.program_id_index = {:?}",
         tx_instruction.program_id_index
     );
-    let program_id: &Pubkey = accounts[pidx].key;
-    println!("tx_instruction.program_id = {:?}", accounts[pidx].key);
+    println!("tx_instruction.program_id = {:?}", program_id);
     println!(
         "tx.message.header.num_required_signatures = {:?}",
         tx.message.header.num_required_signatures
@@ -216,116 +205,16 @@ pub fn call_smart_contract_base64_lifetime2<'a>(
         println!("     owner = {:?}", acc.owner.to_string());
     }
 
-    (program_id.to_owned(), ordered_accounts, tx_instruction.data.to_owned())
+    (
+        program_id.to_owned(),
+        ordered_accounts,
+        tx_instruction.data.to_owned(),
+    )
 }
 
-pub fn call_smart_contract_base64(
-    payload: &str,
-    msg_sender: &str,
-    instruction_index: usize,
-    entry: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
-) {
-    println!("sender => {:?}", msg_sender);
-    println!("payload => {:?}", payload);
-    println!("instruction_index => {:?}", instruction_index);
-    let decoded = base64::decode(payload).unwrap();
-    let tx: transaction::Transaction = bincode::deserialize(&decoded).unwrap();
-    let sender_bytes: Vec<u8> = hex::decode(&msg_sender[2..])
-        .unwrap()
-        .into_iter()
-        .rev()
-        .collect();
-
-    let tx_instruction = &tx.message.instructions[instruction_index];
-    let mut accounts = Vec::new();
-    let mut params = Vec::new();
-    let mut i = 0;
-    for pubkey in tx.message.account_keys.iter() {
-        println!("loading pk = {:?}", pubkey);
-        let (a, b, c) = load_account_info_data(&pubkey);
-        let mut is_signer = false;
-        if tx.signatures.len() > i {
-            let signature = &tx.signatures[i];
-            is_signer = check_signature(&pubkey, &sender_bytes, &signature);
-        }
-        params.push((a, b, c, pubkey, is_signer));
-        i = i + 1;
-    }
-    for param in params.iter_mut() {
-        let key = &param.3;
-        let is_signer = &param.4;
-        let is_writable = true;
-        let executable = true;
-        let account_info = AccountInfo {
-            key,
-            is_signer: *is_signer,
-            is_writable,
-            lamports: Rc::new(RefCell::new(&mut param.1)),
-            data: Rc::new(RefCell::new(&mut param.0)),
-            owner: &param.2,
-            executable,
-            rent_epoch: 1,
-        };
-        accounts.push(account_info);
-    }
-    let pidx: usize = (tx_instruction.program_id_index).into();
-    println!(
-        "tx_instruction.program_id_index = {:?}",
-        tx_instruction.program_id_index
-    );
-    let program_id = accounts[pidx].key;
-    println!("tx_instruction.program_id = {:?}", accounts[pidx].key);
-    println!(
-        "tx.message.header.num_required_signatures = {:?}",
-        tx.message.header.num_required_signatures
-    );
-    println!(
-        "tx.message.header.num_readonly_signed_accounts = {:?}",
-        tx.message.header.num_readonly_signed_accounts
-    );
-    println!(
-        "tx.message.header.num_readonly_unsigned_accounts = {:?}",
-        tx.message.header.num_readonly_unsigned_accounts
-    );
-    println!("signatures.len() = {:?}", tx.signatures.len());
-    println!("accounts indexes = {:?}", tx_instruction.accounts);
-    println!(
-        "method dispatch's sighash = {:?}",
-        &tx_instruction.data[..8]
-    );
-    let mut ordered_accounts = Vec::new();
-    let tot = tx_instruction.accounts.len();
-    for j in 0..tot {
-        let index = tx_instruction.accounts[j];
-        let i: usize = index.into();
-        ordered_accounts.push(accounts[i].to_owned());
-    }
-
-    // the addresses changes when you push to vec
-    // so we need to get the pointers here, after
-    for j in 0..tot {
-        let p: *mut &Pubkey = std::ptr::addr_of_mut!(ordered_accounts[j].owner);
-        owner_manager::add_ptr(p as *mut Pubkey, ordered_accounts[j].key.clone());
-    }
-
-    for acc in ordered_accounts.iter() {
-        println!("- ordered_accounts = {:?}", acc.key);
-        println!("     owner = {:?}", acc.owner.to_string());
-    }
-
-    let resp = entry(&program_id, &ordered_accounts, &tx_instruction.data);
-
-    resp.unwrap();
-    // match resp {
-    //     Ok(_) => {
-    //         println!("Success!");
-    //     }
-    //     Err(_) => {
-    //         println!("Error: Something is not right! Handle any errors plz");
-    //     }
-    // }
+pub fn persist_accounts(accounts: &[AccountInfo]) {
     let account_manager = create_account_manager();
-    for acc in ordered_accounts.iter() {
+    for acc in accounts.iter() {
         let data = acc.data.borrow_mut();
         let lamports: u64 = **acc.lamports.borrow_mut();
         let account_file_data = AccountFileData {
@@ -344,4 +233,24 @@ pub fn call_smart_contract_base64(
             println!("     owner = {:?}", acc.owner.to_string());
         }
     }
+}
+
+pub fn call_smart_contract_base64(
+    payload: &str,
+    msg_sender: &str,
+    instruction_index: usize,
+    solana_program_entrypoint: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
+) {
+    let (program_id, accounts, data) = parse_processor_args(payload, msg_sender, instruction_index);
+    let resp = solana_program_entrypoint(&program_id, &accounts, &data);
+    resp.unwrap();
+    // match resp {
+    //     Ok(_) => {
+    //         println!("Success!");
+    //     }
+    //     Err(_) => {
+    //         println!("Error: Something is not right! Handle any errors plz");
+    //     }
+    // }
+    persist_accounts(&accounts);
 }
