@@ -7,7 +7,7 @@ pub static mut TIMESTAMP: i64 = 0;
 pub mod system_program {
     use anchor_lang::prelude::{CpiContext, Pubkey, Result};
     // use anchor_lang::solana_program;
-    use crate::owner_manager;
+    use crate::{owner_manager, account_manager};
     pub use anchor_lang::system_program::*;
 
     pub fn create_account<'a, 'b, 'c, 'info>(
@@ -19,7 +19,7 @@ pub mod system_program {
         anchor_lang::prelude::msg!("Inside lang system_program create_account... {}", lamports);
         owner_manager::change_owner(ctx.accounts.to.key.clone(), owner.clone());
         **ctx.accounts.to.try_borrow_mut_lamports()? += lamports;
-        owner_manager::set_data_size(&ctx.accounts.to, space.try_into().unwrap());
+        account_manager::set_data_size(&ctx.accounts.to, space.try_into().unwrap());
 
         // let ix = solana_program::system_instruction::create_account(
         //     ctx.accounts.from.key,
@@ -149,6 +149,8 @@ pub mod solana_program {
 
 #[cfg(not(target_arch = "bpf"))]
 pub mod prelude {
+    use std::str::FromStr;
+
     pub use anchor_lang::prelude::*;
     use anchor_lang::solana_program::sysvar::SysvarId;
     use serde::{Deserialize, Serialize};
@@ -177,7 +179,7 @@ pub mod prelude {
     }
     impl SysvarId for Rent {
         fn id() -> Pubkey {
-            Pubkey::default()
+            Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap()
         }
         fn check_id(_: &Pubkey) -> bool {
             true
