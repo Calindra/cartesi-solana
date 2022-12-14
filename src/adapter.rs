@@ -19,7 +19,7 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     Pubkey::new(&bytes)
 }
 
-pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>) {
+pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     #[cfg(not(target_arch = "bpf"))]
     {
         let mut msg_sender = String::new();
@@ -123,7 +123,7 @@ pub fn parse_processor_args<'a>(
     payload: &str,
     msg_sender: &str,
     instruction_index: usize,
-) -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>) {
+) -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     println!("sender => {:?}", msg_sender);
     println!("payload => {:?}", payload);
     println!("instruction_index => {:?}", instruction_index);
@@ -135,10 +135,15 @@ pub fn parse_processor_args<'a>(
         .rev()
         .collect();
     let tx_instruction = &tx.message.instructions[instruction_index];
-    let mut accounts: Vec<AccountInfo> = Vec::new();
+    let last_instruction = instruction_index == &tx.message.instructions.len() - 1;
+    let mut accounts: Vec<AccountInfo> = vec![];
     let mut i = 0;
     for key in tx.message.account_keys.iter() {
-        println!("loading account with key = {:?}", key);
+        let (data, lamports, owner) = load_account_info_data(&key);
+        create_account_info(key, true, true, lamports, data, owner, true);
+    }
+    for key in tx.message.account_keys.iter() {
+        println!("loading account with key = {:?}", &key);
         let (data, lamports, owner) = load_account_info_data(&key);
         let mut is_signer = false;
         if tx.signatures.len() > i {
@@ -156,9 +161,17 @@ pub fn parse_processor_args<'a>(
             owner,
             executable,
         );
-        accounts.push(account_info);
-        i = i + 1;
+        println!("i = {}; key = {:?}", i, account_info.key);
+        accounts.push(account_info.to_owned());
+        println!("first account 0 = {:?}", accounts[0].key);
+        i += 1;
     }
+    i = 0;
+    for key in tx.message.account_keys.iter() {
+        assert_eq!(key, accounts[i].key);
+        i += 1;
+    }
+    println!("first account 1 = {:?}", accounts[0].key);
     let pidx: usize = (tx_instruction.program_id_index).into();
     let program_id: &Pubkey = accounts[pidx].key;
 
@@ -181,15 +194,20 @@ pub fn parse_processor_args<'a>(
     );
     println!("signatures.len() = {:?}", tx.signatures.len());
     println!("accounts indexes = {:?}", tx_instruction.accounts);
-    println!(
-        "method dispatch's sighash = {:?}",
-        &tx_instruction.data[..8]
-    );
+    if &tx_instruction.data.len() >= &8 {
+        println!(
+            "method dispatch's sighash = {:?}",
+            &tx_instruction.data[..8]
+        );
+    }
+    println!("first account 2 = {:?}", accounts[0].key);
     let mut ordered_accounts: Vec<AccountInfo> = Vec::new();
     let tot = tx_instruction.accounts.len();
+    println!("first account 3 = {:?}", accounts[0].key);
     for j in 0..tot {
         let index = tx_instruction.accounts[j];
         let i: usize = index.into();
+        println!("i = {}; key = {:?}", i, accounts[i].key);
         ordered_accounts.push(accounts[i].to_owned());
     }
 
@@ -204,15 +222,16 @@ pub fn parse_processor_args<'a>(
         println!("- ordered_accounts = {:?}", acc.key);
         println!("     owner = {:?}", acc.owner.to_string());
     }
-
+    println!("last_instruction = {}", last_instruction);
     (
         program_id.to_owned(),
         ordered_accounts,
         tx_instruction.data.to_owned(),
+        last_instruction,
     )
 }
 
-pub fn persist_accounts(accounts: &[AccountInfo]) {
+pub fn persist_accounts(accounts: &[AccountInfo], delete: bool) {
     let account_manager = create_account_manager();
     for acc in accounts.iter() {
         let data = acc.data.borrow_mut();
@@ -222,7 +241,8 @@ pub fn persist_accounts(accounts: &[AccountInfo]) {
             data: data.to_vec(),
             lamports: lamports,
         };
-        if lamports <= 0 {
+        println!("should delete = {}", delete);
+        if delete && lamports <= 0 {
             account_manager.delete_account(&acc.key).unwrap();
             println!("! deleted = {:?}", acc.key);
         } else {
@@ -241,7 +261,8 @@ pub fn call_smart_contract_base64(
     instruction_index: usize,
     solana_program_entrypoint: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
 ) {
-    let (program_id, accounts, data) = parse_processor_args(payload, msg_sender, instruction_index);
+    let (program_id, accounts, data, last_instruction) =
+        parse_processor_args(payload, msg_sender, instruction_index);
     let resp = solana_program_entrypoint(&program_id, &accounts, &data);
     resp.unwrap();
     // match resp {
@@ -252,5 +273,5 @@ pub fn call_smart_contract_base64(
     //         println!("Error: Something is not right! Handle any errors plz");
     //     }
     // }
-    persist_accounts(&accounts);
+    persist_accounts(&accounts, last_instruction);
 }
