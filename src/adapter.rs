@@ -1,4 +1,4 @@
-use crate::account_manager::{create_account_info, create_account_manager, AccountFileData};
+use crate::account_manager::{create_account_info, create_account_manager, AccountFileData, self};
 use crate::transaction::Signature;
 use crate::{owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
@@ -142,8 +142,9 @@ pub fn parse_processor_args<'a>(
         let (data, lamports, owner) = load_account_info_data(&key);
         create_account_info(key, true, true, lamports, data, owner, true);
     }
+    account_manager::clear();
     for key in tx.message.account_keys.iter() {
-        println!("loading account with key = {:?}", &key);
+        //println!("loading account with key = {:?}", &key);
         let (data, lamports, owner) = load_account_info_data(&key);
         let mut is_signer = false;
         if tx.signatures.len() > i {
@@ -161,9 +162,9 @@ pub fn parse_processor_args<'a>(
             owner,
             executable,
         );
-        println!("i = {}; key = {:?}", i, account_info.key);
+        //println!("i = {}; key = {:?}", i, account_info.key);
         accounts.push(account_info.to_owned());
-        println!("first account 0 = {:?}", accounts[0].key);
+        println!("i = {}; first key {:?}", i, accounts[0].key);
         i += 1;
     }
     i = 0;
@@ -171,7 +172,6 @@ pub fn parse_processor_args<'a>(
         assert_eq!(key, accounts[i].key);
         i += 1;
     }
-    println!("first account 1 = {:?}", accounts[0].key);
     let pidx: usize = (tx_instruction.program_id_index).into();
     let program_id: &Pubkey = accounts[pidx].key;
 
@@ -200,10 +200,8 @@ pub fn parse_processor_args<'a>(
             &tx_instruction.data[..8]
         );
     }
-    println!("first account 2 = {:?}", accounts[0].key);
     let mut ordered_accounts: Vec<AccountInfo> = Vec::new();
     let tot = tx_instruction.accounts.len();
-    println!("first account 3 = {:?}", accounts[0].key);
     for j in 0..tot {
         let index = tx_instruction.accounts[j];
         let i: usize = index.into();

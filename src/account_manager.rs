@@ -47,8 +47,8 @@ pub fn create_account_info<'a>(
         ACCOUNT_INFO_DATA.push(data);
         let tot_lamports = LAMPORTS.len();
         LAMPORTS.push(lamports);
-        println!("create_account_info tot_keys = {} key = {:?} vs {:?}", tot_keys, &KEYS[tot_keys], &key);
-        println!("First KEY = {:?}", &KEYS[0]);
+        // println!("create_account_info tot_keys = {} key = {:?} vs {:?}", tot_keys, &KEYS[tot_keys], &key);
+        // println!("First KEY = {:?}", &KEYS[0]);
         AccountInfo {
             key: &KEYS[tot_keys],
             is_signer,
@@ -67,7 +67,7 @@ pub fn create_account_manager() -> AccountManager {
     let result = std::env::var("SOLANA_DATA_PATH");
     match result {
         Ok(path) => {
-            println!("base path from env {}", path);
+            //println!("base path from env {}", path);
             account_manager.set_base_path(path);
             return account_manager;
         }
