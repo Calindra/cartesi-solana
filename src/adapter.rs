@@ -1,4 +1,4 @@
-use crate::account_manager::{create_account_info, create_account_manager, AccountFileData, self};
+use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData};
 use crate::transaction::Signature;
 use crate::{owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
@@ -51,13 +51,83 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct AccountInfoSerialize {
+    pub key: Pubkey,
+    pub is_signer: bool,
+    pub is_writable: bool,
+    pub lamports: u64,
+    pub data: Vec<u8>,
+    pub owner: Pubkey,
+    pub executable: bool,
+    pub rent_epoch: u64,
+}
+
+type SolanaEntrypoint = fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult;
+
+fn call_smart_contract_account(
+    solana_program_entrypoint: SolanaEntrypoint,
+    instruction: &str,
+    account: &str,
+    signers_seed: &str,
+) {
+    let instruction = base64::decode(&instruction).unwrap();
+    let signers_seed = base64::decode(&signers_seed).unwrap();
+    let account: Vec<AccountInfoSerialize> = bincode::deserialize(&account.as_bytes()).unwrap();
+
+
+
+    // solana_program_entrypoint(
+    //     &Pubkey::new(&signers_seed),
+    //     &account
+    //         .iter()
+    //         .map(|account| create_account_info(account))
+    //         .collect::<Vec<AccountInfo>>(),
+    //     &instruction,
+    // );
+    // let result = solana_program_entrypoint(solana_program_entrypoint, &instruction, &account);
+
+    // Ok(())
+}
+
+pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<Option<String>> {
+    let header_check = "Header: CPI";
+
+    let mut header_or_message = String::new();
+    io::stdin().read_line(&mut header_or_message)?;
+
+    if header_or_message == header_check {
+        let mut instruction = String::new();
+        io::stdin().read_line(&mut instruction)?;
+
+        let mut account = String::new();
+        io::stdin().read_line(&mut account)?;
+
+        let mut signers_seed = String::new();
+        io::stdin().read_line(&mut signers_seed)?;
+
+        call_smart_contract_account(entry, &instruction, &account, &signers_seed);
+
+        return Ok(None);
+    }
+
+    Ok(Some(header_or_message))
+}
+
 pub fn call_solana_program(
     entry: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
 ) -> io::Result<()> {
     #[cfg(not(target_arch = "bpf"))]
     {
-        let mut msg_sender = String::new();
-        io::stdin().read_line(&mut msg_sender)?;
+        let header_or_message = call_solana_cpi(entry)?;
+
+        if header_or_message.is_none() {
+            return Ok(());
+        }
+
+        // let mut msg_sender = String::new();
+        // io::stdin().read_line(&mut msg_sender)?;
+        let msg_sender = header_or_message.unwrap();
         let mut payload = String::new();
         io::stdin().read_line(&mut payload)?;
         let mut instruction_index = String::new();
