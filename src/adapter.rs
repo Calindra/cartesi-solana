@@ -20,15 +20,16 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     Pubkey::new(&bytes)
 }
 
+fn get_read_line() -> Vec<u8> {
+    let mut line = String::new();
+    io::stdin().read_line(&mut line).unwrap();
+    base64::decode(&line.trim()).unwrap()
+}
+
 fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
-    let mut instruction = String::new();
-    io::stdin().read_line(&mut instruction).unwrap();
-
-    let mut accounts = String::new();
-    io::stdin().read_line(&mut accounts).unwrap();
-
-    let mut signers_seed = String::new();
-    io::stdin().read_line(&mut signers_seed).unwrap();
+    let instruction = get_read_line();
+    let accounts = get_read_line();
+    let signers_seed = get_read_line();
 
     let mut timestamp = String::new();
     io::stdin().read_line(&mut timestamp).unwrap();
@@ -42,10 +43,10 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     }
 
     // todo validate signers_seed
-    let signers_seed: Vec<Vec<Vec<u8>>> = bincode::deserialize(&signers_seed.as_bytes()).unwrap();
+    let signers_seed: Vec<Vec<Vec<u8>>> = bincode::deserialize(&signers_seed).unwrap();
 
-    let instruction: Instruction = bincode::deserialize(&instruction.as_bytes()).unwrap();
-    let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts.as_bytes()).unwrap();
+    let instruction: Instruction = bincode::deserialize(&instruction).unwrap();
+    let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
 
     let accounts: Vec<AccountInfo<'a>> = accounts
         .iter()
@@ -99,6 +100,7 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
     {
         let mut header = String::new();
         io::stdin().read_line(&mut header).unwrap();
+        println!("header: {}", header);
 
         match check_header(header.as_str()) {
             SmartContractType::ExternalPi => get_processor_args_from_external(),
@@ -137,12 +139,14 @@ enum SmartContractType {
 }
 
 fn check_header(header: &str) -> SmartContractType {
-    if header == "Header: External_PI" {
+    let header = header.trim();
+
+    if header == "Header: External CPI" {
         SmartContractType::ExternalPi
     } else if header == "Header: CPI" {
         SmartContractType::CPI
     } else {
-        panic!("Invalid header");
+        panic!("Invalid header [{}]", header);
     }
 }
 
