@@ -1,10 +1,17 @@
-use std::{path::Path, process::{Child, Command, Stdio}, io::Write};
+use std::{
+    fs::{self},
+    io::Write,
+    path::Path,
+    process::{Child, Command, Stdio},
+};
 
-use anchor_lang::{solana_program::{instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch}, prelude::{AccountInfo, Pubkey, ProgramError}};
+use anchor_lang::{
+    prelude::{AccountInfo, ProgramError, Pubkey},
+    solana_program::{instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::anchor_lang::TIMESTAMP;
-
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AccountInfoSerialize {
@@ -38,16 +45,26 @@ fn execute_spawn(program_id: String) -> Child {
     }
 }
 
-
-pub struct CartesiStubs {}
+pub struct CartesiStubs {
+    pub program_id: Pubkey,
+}
 impl SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
-        todo!("set_return_data");
+        let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
+
+        fs::write(path, data).expect("failed to write return data file");
     }
 
     fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
-        todo!("sol_get_return_data");
-        None
+        let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
+
+        if !path.exists() {
+            return None;
+        }
+
+        let data = fs::read(path).expect("failed to read return data file");
+
+        Some((self.program_id, data))
     }
 
     fn sol_invoke_signed(
