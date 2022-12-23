@@ -2,7 +2,7 @@ use std::{
     fs::{self},
     io::Write,
     path::Path,
-    process::{Child, Command, Stdio},
+    process::{Child, Command, Stdio}, str::FromStr
 };
 
 use anchor_lang::{
@@ -11,7 +11,10 @@ use anchor_lang::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::anchor_lang::TIMESTAMP;
+use crate::{
+    account_manager::{create_account_manager, set_data},
+    anchor_lang::TIMESTAMP,
+};
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AccountInfoSerialize {
@@ -45,6 +48,18 @@ fn execute_spawn(program_id: String) -> Child {
     }
 }
 
+fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
+    let account_manager = create_account_manager();
+
+    for account_info in accounts.iter() {
+        let account_data = account_manager.read_account(account_info.key).expect("failed to read account");
+        set_data(account_info, account_data.data);
+        **account_info.try_borrow_mut_lamports()? = account_data.lamports;
+    }
+
+    Ok(())
+}
+
 pub struct CartesiStubs {
     pub program_id: Pubkey,
 }
@@ -52,7 +67,12 @@ impl SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
         let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
 
-        fs::write(path, data).expect("failed to write return data file");
+        let program_id = self.program_id.to_string();
+
+        let data = base64::encode(data);
+
+        fs::write(path, format!("{}\n{}", program_id, data))
+            .expect("failed to write return data file");
     }
 
     fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
@@ -62,9 +82,17 @@ impl SyscallStubs for CartesiStubs {
             return None;
         }
 
-        let data = fs::read(path).expect("failed to read return data file");
+        let bundle = fs::read_to_string(path).expect("failed to read return data file");
 
-        Some((self.program_id, data))
+        let mut bundle = bundle.split("\n");
+
+        let program_id = bundle.next().unwrap();
+        let program_id = Pubkey::from_str(&program_id).unwrap();
+
+        let data = bundle.next().unwrap();
+        let data = base64::decode(data).unwrap();
+
+        Some((program_id, data))
     }
 
     fn sol_invoke_signed(
@@ -80,7 +108,7 @@ impl SyscallStubs for CartesiStubs {
         let instruction = bincode::serialize(&instruction).unwrap();
         let instruction = base64::encode(&instruction);
 
-        let account_infos: Vec<AccountInfoSerialize> = account_infos
+        let account_infos_serialized: Vec<AccountInfoSerialize> = account_infos
             .into_iter()
             .map(|account| AccountInfoSerialize {
                 key: account.key.to_owned(),
@@ -94,8 +122,8 @@ impl SyscallStubs for CartesiStubs {
             })
             .collect();
 
-        let account_infos = bincode::serialize(&account_infos).unwrap();
-        let account_infos = base64::encode(&account_infos);
+        let account_infos_serialized = bincode::serialize(&account_infos_serialized).unwrap();
+        let account_infos_serialized = base64::encode(&account_infos_serialized);
 
         let signers_seeds = bincode::serialize(&signers_seeds).unwrap();
         let signers_seeds = base64::encode(&signers_seeds);
@@ -105,7 +133,7 @@ impl SyscallStubs for CartesiStubs {
 
         child_stdin.write_all(instruction.as_bytes())?;
         child_stdin.write_all(b"\n")?;
-        child_stdin.write_all(account_infos.as_bytes())?;
+        child_stdin.write_all(account_infos_serialized.as_bytes())?;
         child_stdin.write_all(b"\n")?;
         child_stdin.write_all(signers_seeds.as_bytes())?;
         child_stdin.write_all(b"\n")?;
@@ -129,6 +157,8 @@ impl SyscallStubs for CartesiStubs {
             }
             Some(code) => {
                 if code == 0 {
+                    refresh_accounts(account_infos)?;
+
                     println!("Program exited with success code");
                 } else {
                     println!("Program exited with error code: {}", code);
