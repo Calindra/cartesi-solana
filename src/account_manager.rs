@@ -20,6 +20,14 @@ pub fn clear() {
     }
 }
 
+pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
+    unsafe {
+        let tot = ACCOUNT_INFO_DATA.len();
+        ACCOUNT_INFO_DATA.push(data);
+        account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+    }
+}
+
 pub fn set_data_size(account_info: &AccountInfo, size: usize) {
     unsafe {
         let tot = ACCOUNT_INFO_DATA.len();
