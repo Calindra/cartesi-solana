@@ -87,6 +87,7 @@ pub fn create_account_manager() -> AccountManager {
     };
 }
 
+#[derive(Debug)]
 pub struct AccountManager {
     base_path: String,
 }

@@ -2,7 +2,8 @@ use std::{
     fs::{self},
     io::Write,
     path::Path,
-    process::{Child, Command, Stdio}, str::FromStr
+    process::{Child, Command, Stdio},
+    str::FromStr,
 };
 
 use anchor_lang::{
@@ -51,10 +52,22 @@ fn execute_spawn(program_id: String) -> Child {
 fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
     let account_manager = create_account_manager();
 
+    // let accounts = accounts.
+
+    println!("refresh_accounts {:?}", account_manager);
+
     for account_info in accounts.iter() {
-        let account_data = account_manager.read_account(account_info.key).expect("failed to read account");
-        set_data(account_info, account_data.data);
-        **account_info.try_borrow_mut_lamports()? = account_data.lamports;
+        let account_data = account_manager.read_account(account_info.key);
+
+        match account_data {
+            Ok(account_data) => {
+                set_data(account_info, account_data.data);
+                **account_info.try_borrow_mut_lamports()? = account_data.lamports;
+            }
+            Err(_) => {
+                println!("refresh_accounts account not found {:?}", account_info.key);
+            }
+        }
     }
 
     Ok(())
@@ -65,6 +78,8 @@ pub struct CartesiStubs {
 }
 impl SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
+        // let account_manager = create_account_manager();
+
         let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
 
         let program_id = self.program_id.to_string();
