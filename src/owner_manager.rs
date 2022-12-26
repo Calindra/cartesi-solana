@@ -1,4 +1,4 @@
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::{Pubkey, msg};
 use once_cell::sync::Lazy;
 pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
 
@@ -24,21 +24,21 @@ pub fn change_owner<'a>(key: Pubkey, new_owner: Pubkey) {
         let tot = OWNERS.len();
         OWNERS.push(new_owner);
         let pointers = &POINTERS;
-        let mut i = 0;
-        for item in pointers.iter() {
+        for (i, item) in pointers.iter().enumerate() {
             if item.1.to_string() == key.to_string() {
                 let old = *item.0;
                 *item.0 = &OWNERS[tot];
-                anchor_lang::prelude::msg!(
+                msg!(
                     "change_owner: i[{}] account[{:?}] old[{:?}] new[{:?}]",
                     i,
                     key,
                     old,
                     new_owner
                 );
+                return;
             }
-            i += 1;
         }
+        panic!("Account [{:?}] not found, change owner failed.", key);
     }
 }
 
