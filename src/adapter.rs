@@ -47,8 +47,9 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
 
     let instruction: Instruction = bincode::deserialize(&instruction).unwrap();
     let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
-
-    let accounts: Vec<AccountInfo<'a>> = accounts
+    let pubkeys: Vec<Pubkey> = instruction.accounts.iter().map(|acc| acc.pubkey).collect();
+    println!("CPI accounts: {:?}", pubkeys);
+    let mut accounts: Vec<AccountInfo<'a>> = accounts
         .iter()
         .map(|account| {
             create_account_info(
@@ -62,6 +63,17 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
             )
         })
         .collect();
+
+    let pubkeys_2: Vec<&Pubkey> = accounts.iter().map(|acc| acc.key).collect();
+    println!("CPI accounts[2]: {:?}", pubkeys_2);
+
+    // the addresses changes when you push to vec
+    // so we need to get the pointers here, after
+    let tot = accounts.len();
+    for j in 0..tot {
+        let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
+        owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
+    }
 
     (instruction.program_id, accounts, instruction.data, true)
 }
@@ -265,7 +277,7 @@ pub fn parse_processor_args<'a>(
     }
     account_manager::clear();
     for key in tx.message.account_keys.iter() {
-        //println!("loading account with key = {:?}", &key);
+        println!("loading account with key = {:?}", &key);
         let (data, lamports, owner) = load_account_info_data(&key);
         let mut is_signer = false;
         if tx.signatures.len() > i {
@@ -285,7 +297,7 @@ pub fn parse_processor_args<'a>(
         );
         //println!("i = {}; key = {:?}", i, account_info.key);
         accounts.push(account_info.to_owned());
-        println!("i = {}; first key {:?}", i, accounts[0].key);
+        // println!("i = {}; first key {:?}", i, accounts[0].key);
         i += 1;
     }
     i = 0;
@@ -341,7 +353,7 @@ pub fn parse_processor_args<'a>(
         println!("- ordered_accounts = {:?}", acc.key);
         println!("     owner = {:?}", acc.owner.to_string());
     }
-    println!("last_instruction = {}", last_instruction);
+    println!("last_instruction = {}; {}/{}", last_instruction, instruction_index + 1, tx.message.instructions.len());
     (
         program_id.to_owned(),
         ordered_accounts,
@@ -368,7 +380,7 @@ pub fn persist_accounts(accounts: &[AccountInfo], delete: bool) {
             account_manager
                 .write_account(&acc.key, &account_file_data)
                 .unwrap();
-            println!("   saved = {:?}", acc.key);
+            println!("   saved = {:?};", acc.key);
             println!("     owner = {:?}", acc.owner.to_string());
         }
     }

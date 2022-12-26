@@ -182,7 +182,7 @@ pub mod prelude {
             bincode::serialized_size(&Self::default()).unwrap() as usize
         }
 
-        pub fn from_account_info(account_info: &AccountInfo) -> StdResult<AnchorRent, ProgramError> {
+        pub fn from_account_info(_account_info: &AccountInfo) -> StdResult<AnchorRent, ProgramError> {
             Rent::get()
         }
 

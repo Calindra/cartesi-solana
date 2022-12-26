@@ -23,6 +23,7 @@ pub fn clear() {
 pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
     unsafe {
         let tot = ACCOUNT_INFO_DATA.len();
+        println!("set_data: key = {:?}; data.len = {}", account_info.key, data.len());
         ACCOUNT_INFO_DATA.push(data);
         account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
     }
@@ -33,6 +34,7 @@ pub fn set_data_size(account_info: &AccountInfo, size: usize) {
         let tot = ACCOUNT_INFO_DATA.len();
         let data = vec![0; size];
         ACCOUNT_INFO_DATA.push(data);
+        println!("set_data_size: key = {:?}; size = {}", account_info.key, size);
         account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
     }
 }
@@ -130,6 +132,7 @@ impl AccountManager {
         let file_path = format!("{}/{}.json", &self.base_path, pubkey.to_string());
         let contents = serde_json::to_string(account_file_data)?;
         fs::write(file_path, contents)?;
+        println!("saved {:?}; data.len() = {}", pubkey, account_file_data.data.len());
         Ok(())
     }
 

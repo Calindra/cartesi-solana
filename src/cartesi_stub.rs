@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     account_manager::{create_account_manager, set_data},
-    anchor_lang::TIMESTAMP,
+    anchor_lang::TIMESTAMP, owner_manager,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -51,9 +51,6 @@ fn execute_spawn(program_id: String) -> Child {
 
 fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
     let account_manager = create_account_manager();
-
-    // let accounts = accounts.
-
     println!("refresh_accounts {:?}", account_manager);
 
     for account_info in accounts.iter() {
@@ -61,8 +58,12 @@ fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
 
         match account_data {
             Ok(account_data) => {
+                println!("  refresh key {:?}; data.len() = {}", account_info.key, account_data.data.len());
                 set_data(account_info, account_data.data);
                 **account_info.try_borrow_mut_lamports()? = account_data.lamports;
+                if account_info.owner != &account_data.owner {
+                    owner_manager::change_owner(account_info.key.clone(), account_data.owner.to_owned());
+                }
             }
             Err(_) => {
                 println!("refresh_accounts account not found {:?}", account_info.key);
