@@ -1,6 +1,5 @@
 use anchor_lang::prelude::{Pubkey, msg};
-use once_cell::sync::Lazy;
-pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
+pub static mut OWNERS: Vec<Pubkey> = Vec::new();
 
 /*
 #0 170.8 error[E0015]: cannot call non-const fn `Mutex::<Vec<(*mut &Pubkey, Pubkey)>>::new` in statics
@@ -11,7 +10,7 @@ pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
 #0 170.8   |
 #0 170.8   = note: calls in statics are limited to constant functions, tuple structs and tuple variants
 */
-pub static mut POINTERS: Lazy<Vec<(*mut &Pubkey, Pubkey)>> = Lazy::new(|| vec![]);
+pub static mut POINTERS: Vec<(*mut &Pubkey, Pubkey)> = Vec::new();
 
 pub fn add_ptr(p: *mut Pubkey, key: Pubkey) {
     unsafe {

@@ -3,8 +3,6 @@ use std::{cell::RefCell, rc::Rc, str::FromStr};
 use anchor_lang::prelude::{AccountInfo, Pubkey};
 use cartesi_solana::owner_manager;
 
-use once_cell::sync::Lazy;
-
 fn entry(accounts: &[AccountInfo]) {
     println!(" owner == {:?}", accounts[0].owner);
 }
@@ -124,9 +122,11 @@ fn it_should_change_the_owner_pointer_2() {
 #[test]
 fn it_should_change_the_key() {
     // its like a pointer
-    static mut IDS: Lazy<Vec<Pubkey>> = Lazy::new(|| {
-        vec![Pubkey::from_str("EwiqbApgaLT2kQaohqZnSXT9HbkMQWDektXEjXGMJyJv").unwrap()]
-    });
+    static mut IDS: Vec<Pubkey> = Vec::new();
+    unsafe {
+        let id = Pubkey::from_str("EwiqbApgaLT2kQaohqZnSXT9HbkMQWDektXEjXGMJyJv").unwrap();
+        IDS.push(id);
+    }
     let owner: Pubkey = Pubkey::default();
     let mut lamports: u64 = 1000;
     let mut info_data: Vec<u8> = Vec::new();

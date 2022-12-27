@@ -49,7 +49,7 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
     let pubkeys: Vec<Pubkey> = instruction.accounts.iter().map(|acc| acc.pubkey).collect();
     println!("CPI accounts: {:?}", pubkeys);
-    let mut accounts: Vec<AccountInfo<'a>> = accounts
+    let accounts: Vec<AccountInfo<'a>> = accounts
         .iter()
         .map(|account| {
             create_account_info(
@@ -172,7 +172,7 @@ fn check_header(header: &str) -> SmartContractType {
 }
 
 pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<()> {
-    call_smart_contract_cpi(entry);
+    call_smart_contract_cpi(entry).unwrap();
 
     Ok(())
 }
@@ -279,15 +279,16 @@ pub fn parse_processor_args<'a>(
     let tx_instruction = &tx.message.instructions[instruction_index];
     let last_instruction = instruction_index == &tx.message.instructions.len() - 1;
     let mut accounts: Vec<AccountInfo> = vec![];
-    let mut i = 0;
     for key in tx.message.account_keys.iter() {
         let (data, lamports, owner) = load_account_info_data(&key);
         create_account_info(key, true, true, lamports, data, owner, true);
     }
     account_manager::clear();
-    for key in tx.message.account_keys.iter() {
-        println!("loading account with key = {:?}", &key);
+    let pidx: usize = (tx_instruction.program_id_index).into();
+    let program_id: &Pubkey = &tx.message.account_keys[pidx];
+    for (i, key) in tx.message.account_keys.iter().enumerate() {
         let (data, lamports, owner) = load_account_info_data(&key);
+        println!("loading account with key = {:?}; data.len() = {}; program_id = {:?}", &key, data.len(), program_id);
         let mut is_signer = false;
         if tx.signatures.len() > i {
             let signature = &tx.signatures[i];
@@ -304,50 +305,17 @@ pub fn parse_processor_args<'a>(
             owner,
             executable,
         );
-        //println!("i = {}; key = {:?}", i, account_info.key);
         accounts.push(account_info.to_owned());
-        // println!("i = {}; first key {:?}", i, accounts[0].key);
-        i += 1;
     }
-    i = 0;
-    for key in tx.message.account_keys.iter() {
+    for (i, key) in tx.message.account_keys.iter().enumerate() {
         assert_eq!(key, accounts[i].key);
-        i += 1;
     }
-    let pidx: usize = (tx_instruction.program_id_index).into();
-    let program_id: &Pubkey = accounts[pidx].key;
-
-    println!(
-        "tx_instruction.program_id_index = {:?}",
-        tx_instruction.program_id_index
-    );
-    println!("tx_instruction.program_id = {:?}", program_id);
-    println!(
-        "tx.message.header.num_required_signatures = {:?}",
-        tx.message.header.num_required_signatures
-    );
-    println!(
-        "tx.message.header.num_readonly_signed_accounts = {:?}",
-        tx.message.header.num_readonly_signed_accounts
-    );
-    println!(
-        "tx.message.header.num_readonly_unsigned_accounts = {:?}",
-        tx.message.header.num_readonly_unsigned_accounts
-    );
-    println!("signatures.len() = {:?}", tx.signatures.len());
-    println!("accounts indexes = {:?}", tx_instruction.accounts);
-    if &tx_instruction.data.len() >= &8 {
-        println!(
-            "method dispatch's sighash = {:?}",
-            &tx_instruction.data[..8]
-        );
-    }
+    
     let mut ordered_accounts: Vec<AccountInfo> = Vec::new();
     let tot = tx_instruction.accounts.len();
     for j in 0..tot {
         let index = tx_instruction.accounts[j];
         let i: usize = index.into();
-        println!("i = {}; key = {:?}", i, accounts[i].key);
         ordered_accounts.push(accounts[i].to_owned());
     }
 
@@ -379,7 +347,7 @@ pub fn persist_accounts(accounts: &[AccountInfo], delete: bool) {
         let account_file_data = AccountFileData {
             owner: acc.owner.to_owned(),
             data: data.to_vec(),
-            lamports: lamports,
+            lamports,
         };
         println!("should delete = {}", delete);
         if delete && lamports <= 0 {
@@ -413,5 +381,6 @@ pub fn call_smart_contract_base64(
     //         println!("Error: Something is not right! Handle any errors plz");
     //     }
     // }
+    println!("Persist {:?} accounts...", program_id);
     persist_accounts(&accounts, last_instruction);
 }

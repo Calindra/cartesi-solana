@@ -150,11 +150,11 @@ pub mod solana_program {
 pub mod prelude {
     use std::str::FromStr;
 
-    pub use anchor_lang::prelude::*;
-    use anchor_lang::solana_program::sysvar::{Sysvar, SysvarId};
-    use serde::{Deserialize, Serialize};
-    use core::result::Result as StdResult;
     use anchor_lang::prelude::Rent as AnchorRent;
+    pub use anchor_lang::prelude::*;
+    use anchor_lang::solana_program::sysvar::SysvarId;
+    use core::result::Result as StdResult;
+    use serde::{Deserialize, Serialize};
 
     use super::TIMESTAMP;
 
@@ -182,7 +182,9 @@ pub mod prelude {
             bincode::serialized_size(&Self::default()).unwrap() as usize
         }
 
-        pub fn from_account_info(_account_info: &AccountInfo) -> StdResult<AnchorRent, ProgramError> {
+        pub fn from_account_info(
+            _account_info: &AccountInfo,
+        ) -> StdResult<AnchorRent, ProgramError> {
             Rent::get()
         }
 
