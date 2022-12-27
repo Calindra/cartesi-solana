@@ -77,7 +77,7 @@ pub fn create_account_info<'a>(
             key: key.to_owned(),
             owner,
             lamports,
-            data: data.into(),
+            data: data.as_slice().into(),
         });
         let mem_data = &mut MEM_DATA[tot_mem_data];
         AccountInfo {
