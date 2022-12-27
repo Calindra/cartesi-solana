@@ -64,18 +64,27 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
         })
         .collect();
 
-    let pubkeys_2: Vec<&Pubkey> = accounts.iter().map(|acc| acc.key).collect();
+    let mut ordered_accounts = vec![];
+    for key in pubkeys.iter() {
+        let account_item = accounts.iter().find(|acc| acc.key == key);
+        match account_item {
+            Some(account_info) => ordered_accounts.push(account_info.to_owned()),
+            None => panic!("Account not found {:?}", key),
+        }
+    }
+
+    let pubkeys_2: Vec<&Pubkey> = ordered_accounts.iter().map(|acc| acc.key).collect();
     println!("CPI accounts[2]: {:?}", pubkeys_2);
 
     // the addresses changes when you push to vec
     // so we need to get the pointers here, after
-    let tot = accounts.len();
+    let tot = ordered_accounts.len();
     for j in 0..tot {
-        let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
-        owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
+        let p: *mut &Pubkey = std::ptr::addr_of_mut!(ordered_accounts[j].owner);
+        owner_manager::add_ptr(p as *mut Pubkey, ordered_accounts[j].key.clone());
     }
 
-    (instruction.program_id, accounts, instruction.data, true)
+    (instruction.program_id, ordered_accounts, instruction.data, true)
 }
 
 fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
