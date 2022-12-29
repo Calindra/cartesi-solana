@@ -2,6 +2,7 @@ use anchor_lang::prelude::AccountInfo;
 use anchor_lang::prelude::Pubkey;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use borsh::BorshSerialize;
 use std::io::ErrorKind::NotFound;
 use std::rc::Rc;
 use std::{fs, str::FromStr};
@@ -22,22 +23,31 @@ pub fn clear() {
     }
 }
 
+pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, borsh_structure: B) {
+    let mut serialized_data = vec![0u8;0];
+    borsh_structure.serialize(&mut serialized_data).unwrap();
+    let diff = account_info.data_len() - serialized_data.len();
+    for _ in 0..diff {
+        serialized_data.push(0);
+    }
+    set_data(account_info, serialized_data);
+}
+
 pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
     unsafe {
-        
         println!(
             "set_data: key = {:?}; data.len = {}",
             account_info.key,
             data.len()
         );
         if account_info.data_len() == data.len() {
-            println!("set_data: write");
+            println!("set_data: account_info's data keep the same memory space");
             let mut data_info = account_info.try_borrow_mut_data().unwrap();
             for (i, byte) in data.iter().enumerate() {
                 data_info[i] = *byte;
             }
         } else {
-            println!("set_data: replaced");
+            println!("set_data: RefCell replacing the account_info data");
             let tot = ACCOUNT_INFO_DATA.len();
             ACCOUNT_INFO_DATA.push(data);
             account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
