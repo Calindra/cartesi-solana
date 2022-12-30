@@ -1,11 +1,12 @@
 use anchor_lang::prelude::AccountInfo;
 use anchor_lang::prelude::Pubkey;
+use borsh::BorshSerialize;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use borsh::BorshSerialize;
 use std::io::ErrorKind::NotFound;
 use std::rc::Rc;
 use std::{fs, str::FromStr};
+// use solana_sdk::account::AccountSharedData;
 static mut ACCOUNT_INFO_DATA: Vec<Vec<u8>> = Vec::new();
 static mut MEM_DATA: Vec<AccountMemData> = Vec::new();
 
@@ -34,19 +35,19 @@ pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, bor
 }
 
 pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
-    unsafe {
-        println!(
-            "set_data: key = {:?}; data.len = {}",
-            account_info.key,
-            data.len()
-        );
-        if account_info.data_len() == data.len() {
-            println!("set_data: account_info's data keep the same memory space");
-            let mut data_info = account_info.try_borrow_mut_data().unwrap();
-            for (i, byte) in data.iter().enumerate() {
-                data_info[i] = *byte;
-            }
-        } else {
+    println!(
+        "set_data: key = {:?}; data.len = {}",
+        account_info.key,
+        data.len()
+    );
+    if account_info.data_len() == data.len() {
+        println!("set_data: account_info's data keep the same memory space");
+        let mut data_info = account_info.try_borrow_mut_data().unwrap();
+        for (i, byte) in data.iter().enumerate() {
+            data_info[i] = *byte;
+        }
+    } else {
+        unsafe {
             println!("set_data: RefCell replacing the account_info data");
             let tot = ACCOUNT_INFO_DATA.len();
             ACCOUNT_INFO_DATA.push(data);
