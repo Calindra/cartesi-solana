@@ -58,8 +58,9 @@ fn it_should_serialize_with_shared_data() {
     let account_info2 = account_info.to_owned();
     let inner_data_vec = borsh_structure.try_to_vec().unwrap();
     assert_eq!(inner_data_vec.len(), 32);
-    serialize_with_padding(&account_info2, borsh_structure);
+    serialize_with_padding(&account_info2, &borsh_structure);
 
     assert_eq!(account_info.data_len(), 42);
     assert_eq!(account_info2.data_len(), 42);
+    assert_eq!((*account_info.data.borrow())[0..32], inner_data_vec);
 }

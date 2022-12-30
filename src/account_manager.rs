@@ -23,7 +23,7 @@ pub fn clear() {
     }
 }
 
-pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, borsh_structure: B) {
+pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, borsh_structure: &B) {
     let mut serialized_data = vec![0u8;0];
     borsh_structure.serialize(&mut serialized_data).unwrap();
     let diff = account_info.data_len() - serialized_data.len();
