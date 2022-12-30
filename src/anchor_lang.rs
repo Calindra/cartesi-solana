@@ -7,7 +7,7 @@ pub static mut TIMESTAMP: i64 = 0;
 pub mod system_program {
     use anchor_lang::prelude::{CpiContext, Pubkey, Result};
     // use anchor_lang::solana_program;
-    use crate::{owner_manager, account_manager};
+    use crate::{account_manager, owner_manager};
     pub use anchor_lang::system_program::*;
 
     pub fn create_account<'a, 'b, 'c, 'info>(
@@ -56,7 +56,6 @@ pub mod system_program {
         // .map_err(Into::into)
         Ok(())
     }
-    
 }
 
 #[cfg(not(target_arch = "bpf"))]
@@ -151,8 +150,10 @@ pub mod solana_program {
 pub mod prelude {
     use std::str::FromStr;
 
+    use anchor_lang::prelude::Rent as AnchorRent;
     pub use anchor_lang::prelude::*;
     use anchor_lang::solana_program::sysvar::SysvarId;
+    use core::result::Result as StdResult;
     use serde::{Deserialize, Serialize};
 
     use super::TIMESTAMP;
@@ -170,11 +171,29 @@ pub mod prelude {
         }
     }
 
-    #[derive(Default, Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize)]
     pub struct Rent {}
     impl Rent {
-        pub fn get() -> core::result::Result<anchor_lang::prelude::Rent, ProgramError> {
-            Ok(anchor_lang::prelude::Rent::default())
+        pub fn get() -> StdResult<AnchorRent, ProgramError> {
+            Ok(AnchorRent::default())
+        }
+
+        pub fn size_of() -> usize {
+            bincode::serialized_size(&Self::default()).unwrap() as usize
+        }
+
+        pub fn from_account_info(
+            _account_info: &AccountInfo,
+        ) -> StdResult<AnchorRent, ProgramError> {
+            Rent::get()
+        }
+
+        pub fn to_account_info(&self, account_info: &mut AccountInfo) -> Option<()> {
+            bincode::serialize_into(&mut account_info.data.borrow_mut()[..], self).ok()
+        }
+
+        pub fn default() -> AnchorRent {
+            AnchorRent::default()
         }
     }
     impl SysvarId for Rent {
@@ -186,5 +205,5 @@ pub mod prelude {
         }
     }
 
-    impl<'a, 'b> anchor_lang::prelude::SolanaSysvar for Rent {}
+    // impl<'a, 'b> anchor_lang::prelude::SolanaSysvar for Rent {}
 }

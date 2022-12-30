@@ -1,6 +1,5 @@
-use anchor_lang::prelude::Pubkey;
-use once_cell::sync::Lazy;
-pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
+use anchor_lang::prelude::{Pubkey, msg};
+pub static mut OWNERS: Vec<Pubkey> = Vec::new();
 
 /*
 #0 170.8 error[E0015]: cannot call non-const fn `Mutex::<Vec<(*mut &Pubkey, Pubkey)>>::new` in statics
@@ -11,7 +10,7 @@ pub static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
 #0 170.8   |
 #0 170.8   = note: calls in statics are limited to constant functions, tuple structs and tuple variants
 */
-pub static mut POINTERS: Lazy<Vec<(*mut &Pubkey, Pubkey)>> = Lazy::new(|| vec![]);
+pub static mut POINTERS: Vec<(*mut &Pubkey, Pubkey)> = Vec::new();
 
 pub fn add_ptr(p: *mut Pubkey, key: Pubkey) {
     unsafe {
@@ -24,21 +23,21 @@ pub fn change_owner<'a>(key: Pubkey, new_owner: Pubkey) {
         let tot = OWNERS.len();
         OWNERS.push(new_owner);
         let pointers = &POINTERS;
-        let mut i = 0;
-        for item in pointers.iter() {
+        for (i, item) in pointers.iter().enumerate() {
             if item.1.to_string() == key.to_string() {
                 let old = *item.0;
                 *item.0 = &OWNERS[tot];
-                anchor_lang::prelude::msg!(
+                msg!(
                     "change_owner: i[{}] account[{:?}] old[{:?}] new[{:?}]",
                     i,
                     key,
                     old,
                     new_owner
                 );
+                return;
             }
-            i += 1;
         }
+        panic!("Account [{:?}] not found, change owner failed.", key);
     }
 }
 

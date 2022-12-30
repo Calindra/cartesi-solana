@@ -1,31 +1,74 @@
 use anchor_lang::prelude::AccountInfo;
 use anchor_lang::prelude::Pubkey;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use borsh::BorshSerialize;
 use std::io::ErrorKind::NotFound;
 use std::rc::Rc;
 use std::{fs, str::FromStr};
-static mut OWNERS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
-static mut ACCOUNT_INFO_DATA: Lazy<Vec<Vec<u8>>> = Lazy::new(|| vec![]);
-static mut KEYS: Lazy<Vec<Pubkey>> = Lazy::new(|| vec![]);
-static mut LAMPORTS: Lazy<Vec<u64>> = Lazy::new(|| vec![]);
+static mut ACCOUNT_INFO_DATA: Vec<Vec<u8>> = Vec::new();
+static mut MEM_DATA: Vec<AccountMemData> = Vec::new();
+
+struct AccountMemData {
+    key: Pubkey,
+    owner: Pubkey,
+    data: Box<[u8]>,
+    lamports: u64,
+}
 
 pub fn clear() {
     unsafe {
-        OWNERS.clear();
-        KEYS.clear();
+        MEM_DATA.clear();
         ACCOUNT_INFO_DATA.clear();
-        LAMPORTS.clear();
+    }
+}
+
+pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, borsh_structure: &B) {
+    let mut serialized_data = vec![0u8;0];
+    borsh_structure.serialize(&mut serialized_data).unwrap();
+    let diff = account_info.data_len() - serialized_data.len();
+    for _ in 0..diff {
+        serialized_data.push(0);
+    }
+    set_data(account_info, serialized_data);
+}
+
+pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
+    unsafe {
+        println!(
+            "set_data: key = {:?}; data.len = {}",
+            account_info.key,
+            data.len()
+        );
+        if account_info.data_len() == data.len() {
+            println!("set_data: account_info's data keep the same memory space");
+            let mut data_info = account_info.try_borrow_mut_data().unwrap();
+            for (i, byte) in data.iter().enumerate() {
+                data_info[i] = *byte;
+            }
+        } else {
+            println!("set_data: RefCell replacing the account_info data");
+            let tot = ACCOUNT_INFO_DATA.len();
+            ACCOUNT_INFO_DATA.push(data);
+            account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+        }
     }
 }
 
 pub fn set_data_size(account_info: &AccountInfo, size: usize) {
     unsafe {
-        let tot = ACCOUNT_INFO_DATA.len();
-        let data = vec![0; size];
-        ACCOUNT_INFO_DATA.push(data);
-        account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+        println!(
+            "set_data_size: key = {:?}; size = {}",
+            account_info.key, size
+        );
+        if account_info.data_len() != size {
+            let tot = ACCOUNT_INFO_DATA.len();
+            let data = vec![0; size];
+            ACCOUNT_INFO_DATA.push(data);
+            account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+        } else {
+            println!("set_data_size: skipped");
+        }
     }
 }
 
@@ -39,21 +82,21 @@ pub fn create_account_info<'a>(
     executable: bool,
 ) -> AccountInfo<'a> {
     unsafe {
-        let tot_owners = OWNERS.len();
-        OWNERS.push(owner);
-        let tot_keys = KEYS.len();
-        KEYS.push(key.to_owned());
-        let tot_data = ACCOUNT_INFO_DATA.len();
-        ACCOUNT_INFO_DATA.push(data);
-        let tot_lamports = LAMPORTS.len();
-        LAMPORTS.push(lamports);
+        let tot_mem_data = MEM_DATA.len();
+        MEM_DATA.push(AccountMemData {
+            key: key.to_owned(),
+            owner,
+            lamports,
+            data: data.as_slice().into(),
+        });
+        let mem_data = &mut MEM_DATA[tot_mem_data];
         AccountInfo {
-            key: &KEYS[tot_keys],
+            key: &mem_data.key,
             is_signer,
             is_writable,
-            lamports: Rc::new(RefCell::new(&mut LAMPORTS[tot_lamports])),
-            data: Rc::new(RefCell::new(&mut ACCOUNT_INFO_DATA[tot_data])),
-            owner: &OWNERS[tot_owners],
+            lamports: Rc::new(RefCell::new(&mut mem_data.lamports)),
+            data: Rc::new(RefCell::new(&mut mem_data.data)),
+            owner: &mem_data.owner,
             executable,
             rent_epoch: 1,
         }
@@ -65,7 +108,7 @@ pub fn create_account_manager() -> AccountManager {
     let result = std::env::var("SOLANA_DATA_PATH");
     match result {
         Ok(path) => {
-            println!("base path from env {}", path);
+            //println!("base path from env {}", path);
             account_manager.set_base_path(path);
             return account_manager;
         }
@@ -77,6 +120,7 @@ pub fn create_account_manager() -> AccountManager {
     };
 }
 
+#[derive(Debug)]
 pub struct AccountManager {
     base_path: String,
 }
@@ -119,6 +163,11 @@ impl AccountManager {
         let file_path = format!("{}/{}.json", &self.base_path, pubkey.to_string());
         let contents = serde_json::to_string(account_file_data)?;
         fs::write(file_path, contents)?;
+        println!(
+            "saved {:?}; data.len() = {}",
+            pubkey,
+            account_file_data.data.len()
+        );
         Ok(())
     }
 

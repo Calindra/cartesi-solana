@@ -1,7 +1,8 @@
-use crate::account_manager::{create_account_info, create_account_manager, AccountFileData};
+use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData, set_data};
 use crate::transaction::Signature;
 use crate::{owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
+use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -19,70 +20,211 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     Pubkey::new(&bytes)
 }
 
-pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>) {
+fn get_read_line() -> Vec<u8> {
+    let mut line = String::new();
+    io::stdin().read_line(&mut line).unwrap();
+    base64::decode(&line.trim()).unwrap()
+}
+
+fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
+    let instruction = get_read_line();
+    let accounts = get_read_line();
+    let signers_seed = get_read_line();
+
+    let mut timestamp = String::new();
+    io::stdin().read_line(&mut timestamp).unwrap();
+
+    let timestamp: i64 = timestamp
+        .trim()
+        .parse()
+        .expect("Timestamp is not an integer");
+    unsafe {
+        crate::anchor_lang::TIMESTAMP = timestamp;
+    }
+
+    // todo validate signers_seed
+    let signers_seed: Vec<Vec<Vec<u8>>> = bincode::deserialize(&signers_seed).unwrap();
+
+    let instruction: Instruction = bincode::deserialize(&instruction).unwrap();
+    let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
+    let pubkeys: Vec<Pubkey> = instruction.accounts.iter().map(|acc| acc.pubkey).collect();
+    println!("CPI accounts: {:?}", pubkeys);
+    let accounts: Vec<AccountInfo<'a>> = accounts
+        .iter()
+        .map(|account| {
+            create_account_info(
+                &account.key,
+                account.is_signer,
+                account.is_writable,
+                account.lamports,
+                account.data[..].to_vec(),
+                account.owner,
+                account.executable,
+            )
+        })
+        .collect();
+
+    let mut ordered_accounts = vec![];
+    for key in pubkeys.iter() {
+        let account_item = accounts.iter().find(|acc| acc.key == key);
+        match account_item {
+            Some(account_info) => ordered_accounts.push(account_info.to_owned()),
+            None => panic!("Account not found {:?}", key),
+        }
+    }
+
+    let pubkeys_2: Vec<&Pubkey> = ordered_accounts.iter().map(|acc| acc.key).collect();
+    println!("CPI accounts[2]: {:?}", pubkeys_2);
+
+    // the addresses changes when you push to vec
+    // so we need to get the pointers here, after
+    let tot = ordered_accounts.len();
+    for j in 0..tot {
+        let p: *mut &Pubkey = std::ptr::addr_of_mut!(ordered_accounts[j].owner);
+        owner_manager::add_ptr(p as *mut Pubkey, ordered_accounts[j].key.clone());
+    }
+
+    (instruction.program_id, ordered_accounts, instruction.data, true)
+}
+
+fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
+    let mut msg_sender = String::new();
+    io::stdin().read_line(&mut msg_sender).unwrap();
+    let mut payload = String::new();
+    io::stdin().read_line(&mut payload).unwrap();
+    let mut instruction_index = String::new();
+    io::stdin().read_line(&mut instruction_index).unwrap();
+    let instruction_index: usize = instruction_index
+        .trim()
+        .parse()
+        .expect("Input is not an integer");
+    let mut timestamp = String::new();
+    io::stdin().read_line(&mut timestamp).unwrap();
+
+    let timestamp: i64 = timestamp
+        .trim()
+        .parse()
+        .expect("Timestamp is not an integer");
+    unsafe {
+        crate::anchor_lang::TIMESTAMP = timestamp;
+    }
+
+    return parse_processor_args(
+        &payload[..(&payload.len() - 1)],
+        &msg_sender[..(&msg_sender.len() - 1)],
+        instruction_index,
+    );
+}
+
+pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     #[cfg(not(target_arch = "bpf"))]
     {
-        let mut msg_sender = String::new();
-        io::stdin().read_line(&mut msg_sender).unwrap();
-        let mut payload = String::new();
-        io::stdin().read_line(&mut payload).unwrap();
-        let mut instruction_index = String::new();
-        io::stdin().read_line(&mut instruction_index).unwrap();
-        let instruction_index: usize = instruction_index
-            .trim()
-            .parse()
-            .expect("Input is not an integer");
-        let mut timestamp = String::new();
-        io::stdin().read_line(&mut timestamp).unwrap();
+        let mut header = String::new();
+        io::stdin().read_line(&mut header).unwrap();
+        println!("header: {}", header);
 
-        let timestamp: i64 = timestamp
-            .trim()
-            .parse()
-            .expect("Timestamp is not an integer");
-        unsafe {
-            crate::anchor_lang::TIMESTAMP = timestamp;
+        match check_header(header.as_str()) {
+            SmartContractType::ExternalPi => get_processor_args_from_external(),
+            SmartContractType::CPI => get_processor_args_from_cpi(),
         }
-
-        return parse_processor_args(
-            &payload[..(&payload.len() - 1)],
-            &msg_sender[..(&msg_sender.len() - 1)],
-            instruction_index,
-        );
     }
 }
 
-pub fn call_solana_program(
-    entry: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
-) -> io::Result<()> {
+#[derive(Serialize, Deserialize)]
+struct AccountInfoSerialize {
+    pub key: Pubkey,
+    pub is_signer: bool,
+    pub is_writable: bool,
+    pub lamports: u64,
+    pub data: Vec<u8>,
+    pub owner: Pubkey,
+    pub executable: bool,
+    pub rent_epoch: u64,
+}
+
+type SolanaEntrypoint = fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult;
+
+fn call_smart_contract_cpi(solana_program_entrypoint: SolanaEntrypoint) -> io::Result<()> {
+    let (program_id, accounts, data, last_instruction) = get_processor_args_from_cpi();
+    let resp = solana_program_entrypoint(&program_id, &accounts, &data);
+    resp.unwrap();
+    // @todo maybe remove last_instruction
+    persist_accounts(&accounts, last_instruction);
+
+    Ok(())
+}
+
+enum SmartContractType {
+    ExternalPi,
+    CPI,
+}
+
+fn check_header(header: &str) -> SmartContractType {
+    let header = header.trim();
+
+    if header == "Header: External CPI" {
+        SmartContractType::ExternalPi
+    } else if header == "Header: CPI" {
+        SmartContractType::CPI
+    } else {
+        panic!("Invalid header [{}]", header);
+    }
+}
+
+pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<()> {
+    call_smart_contract_cpi(entry).unwrap();
+
+    Ok(())
+}
+
+fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
+    let mut msg_sender = String::new();
+    io::stdin().read_line(&mut msg_sender)?;
+
+    let mut payload = String::new();
+    io::stdin().read_line(&mut payload)?;
+
+    let mut instruction_index = String::new();
+    io::stdin().read_line(&mut instruction_index)?;
+    let instruction_index: usize = instruction_index
+        .trim()
+        .parse()
+        .expect("Input is not an integer");
+    let mut timestamp = String::new();
+    io::stdin().read_line(&mut timestamp)?;
+
+    let timestamp: i64 = timestamp
+        .trim()
+        .parse()
+        .expect("Timestamp is not an integer");
+    unsafe {
+        crate::anchor_lang::TIMESTAMP = timestamp;
+    }
+
+    call_smart_contract_base64(
+        &payload[..(&payload.len() - 1)],
+        &msg_sender[..(&msg_sender.len() - 1)],
+        instruction_index,
+        entry,
+    );
+
+    Ok(())
+}
+
+pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
     #[cfg(not(target_arch = "bpf"))]
     {
-        let mut msg_sender = String::new();
-        io::stdin().read_line(&mut msg_sender)?;
-        let mut payload = String::new();
-        io::stdin().read_line(&mut payload)?;
-        let mut instruction_index = String::new();
-        io::stdin().read_line(&mut instruction_index)?;
-        let instruction_index: usize = instruction_index
-            .trim()
-            .parse()
-            .expect("Input is not an integer");
-        let mut timestamp = String::new();
-        io::stdin().read_line(&mut timestamp)?;
+        let mut header = String::new();
+        io::stdin().read_line(&mut header)?;
 
-        let timestamp: i64 = timestamp
-            .trim()
-            .parse()
-            .expect("Timestamp is not an integer");
-        unsafe {
-            crate::anchor_lang::TIMESTAMP = timestamp;
+        match check_header(&header) {
+            SmartContractType::CPI => {
+                call_solana_cpi(entry)?;
+            }
+            SmartContractType::ExternalPi => {
+                call_solana_program_external(entry)?;
+            }
         }
-
-        call_smart_contract_base64(
-            &payload[..(&payload.len() - 1)],
-            &msg_sender[..(&msg_sender.len() - 1)],
-            instruction_index,
-            entry,
-        );
     }
     Ok(())
 }
@@ -123,7 +265,7 @@ pub fn parse_processor_args<'a>(
     payload: &str,
     msg_sender: &str,
     instruction_index: usize,
-) -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>) {
+) -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     println!("sender => {:?}", msg_sender);
     println!("payload => {:?}", payload);
     println!("instruction_index => {:?}", instruction_index);
@@ -135,11 +277,18 @@ pub fn parse_processor_args<'a>(
         .rev()
         .collect();
     let tx_instruction = &tx.message.instructions[instruction_index];
-    let mut accounts: Vec<AccountInfo> = Vec::new();
-    let mut i = 0;
+    let last_instruction = instruction_index == &tx.message.instructions.len() - 1;
+    let mut accounts: Vec<AccountInfo> = vec![];
     for key in tx.message.account_keys.iter() {
-        println!("loading account with key = {:?}", key);
         let (data, lamports, owner) = load_account_info_data(&key);
+        create_account_info(key, true, true, lamports, data, owner, true);
+    }
+    account_manager::clear();
+    let pidx: usize = (tx_instruction.program_id_index).into();
+    let program_id: &Pubkey = &tx.message.account_keys[pidx];
+    for (i, key) in tx.message.account_keys.iter().enumerate() {
+        let (data, lamports, owner) = load_account_info_data(&key);
+        println!("loading account with key = {:?}; data.len() = {}; program_id = {:?}", &key, data.len(), program_id);
         let mut is_signer = false;
         if tx.signatures.len() > i {
             let signature = &tx.signatures[i];
@@ -156,35 +305,12 @@ pub fn parse_processor_args<'a>(
             owner,
             executable,
         );
-        accounts.push(account_info);
-        i = i + 1;
+        accounts.push(account_info.to_owned());
     }
-    let pidx: usize = (tx_instruction.program_id_index).into();
-    let program_id: &Pubkey = accounts[pidx].key;
-
-    println!(
-        "tx_instruction.program_id_index = {:?}",
-        tx_instruction.program_id_index
-    );
-    println!("tx_instruction.program_id = {:?}", program_id);
-    println!(
-        "tx.message.header.num_required_signatures = {:?}",
-        tx.message.header.num_required_signatures
-    );
-    println!(
-        "tx.message.header.num_readonly_signed_accounts = {:?}",
-        tx.message.header.num_readonly_signed_accounts
-    );
-    println!(
-        "tx.message.header.num_readonly_unsigned_accounts = {:?}",
-        tx.message.header.num_readonly_unsigned_accounts
-    );
-    println!("signatures.len() = {:?}", tx.signatures.len());
-    println!("accounts indexes = {:?}", tx_instruction.accounts);
-    println!(
-        "method dispatch's sighash = {:?}",
-        &tx_instruction.data[..8]
-    );
+    for (i, key) in tx.message.account_keys.iter().enumerate() {
+        assert_eq!(key, accounts[i].key);
+    }
+    
     let mut ordered_accounts: Vec<AccountInfo> = Vec::new();
     let tot = tx_instruction.accounts.len();
     for j in 0..tot {
@@ -204,15 +330,16 @@ pub fn parse_processor_args<'a>(
         println!("- ordered_accounts = {:?}", acc.key);
         println!("     owner = {:?}", acc.owner.to_string());
     }
-
+    println!("last_instruction = {}; {}/{}", last_instruction, instruction_index + 1, tx.message.instructions.len());
     (
         program_id.to_owned(),
         ordered_accounts,
         tx_instruction.data.to_owned(),
+        last_instruction,
     )
 }
 
-pub fn persist_accounts(accounts: &[AccountInfo]) {
+pub fn persist_accounts(accounts: &[AccountInfo], delete: bool) {
     let account_manager = create_account_manager();
     for acc in accounts.iter() {
         let data = acc.data.borrow_mut();
@@ -220,16 +347,17 @@ pub fn persist_accounts(accounts: &[AccountInfo]) {
         let account_file_data = AccountFileData {
             owner: acc.owner.to_owned(),
             data: data.to_vec(),
-            lamports: lamports,
+            lamports,
         };
-        if lamports <= 0 {
+        println!("should delete = {}", delete);
+        if delete && lamports <= 0 {
             account_manager.delete_account(&acc.key).unwrap();
             println!("! deleted = {:?}", acc.key);
         } else {
             account_manager
                 .write_account(&acc.key, &account_file_data)
                 .unwrap();
-            println!("   saved = {:?}", acc.key);
+            println!("   saved = {:?};", acc.key);
             println!("     owner = {:?}", acc.owner.to_string());
         }
     }
@@ -241,7 +369,8 @@ pub fn call_smart_contract_base64(
     instruction_index: usize,
     solana_program_entrypoint: fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult,
 ) {
-    let (program_id, accounts, data) = parse_processor_args(payload, msg_sender, instruction_index);
+    let (program_id, accounts, data, last_instruction) =
+        parse_processor_args(payload, msg_sender, instruction_index);
     let resp = solana_program_entrypoint(&program_id, &accounts, &data);
     resp.unwrap();
     // match resp {
@@ -252,5 +381,6 @@ pub fn call_smart_contract_base64(
     //         println!("Error: Something is not right! Handle any errors plz");
     //     }
     // }
-    persist_accounts(&accounts);
+    println!("Persist {:?} accounts...", program_id);
+    persist_accounts(&accounts, last_instruction);
 }

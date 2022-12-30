@@ -58,6 +58,11 @@ fn it_should_convert_eth_address_to_public_key() {
 }
 
 #[test]
+fn it_runs() {
+    it_should_call_the_solana_program_entry();
+}
+
+#[test]
 fn it_should_call_the_solana_program_entry() {
     setup();
 
@@ -180,7 +185,7 @@ fn it_should_parse_args() {
     }
     let instruction_index = 0;
 
-    let (program_id, accounts, data) = parse_processor_args(payload, msg_sender, instruction_index);
+    let (program_id, accounts, data, _) = parse_processor_args(payload, msg_sender, instruction_index);
     entry(&program_id, &accounts, &data).unwrap();
 }
 
@@ -247,8 +252,8 @@ fn it_should_change_the_owner_inside_entry() {
     }
     let instruction_index = 0;
 
-    let (program_id, accounts, data) = parse_processor_args(payload, msg_sender, instruction_index);
+    let (program_id, accounts, data, _) = parse_processor_args(payload, msg_sender, instruction_index);
     entry(&program_id, &accounts, &data).unwrap();
     assert!(accounts[0].owner.to_string() == "97cRDQwrhrfvrWkjNgZ9JVAv9iMuBLU5igYFPmZ8vPhw");
-    persist_accounts(&accounts);
+    persist_accounts(&accounts, true);
 }
