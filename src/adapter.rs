@@ -1,6 +1,8 @@
-use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData, set_data};
+use crate::account_manager::{
+    self, create_account_info, create_account_manager, set_data, AccountFileData,
+};
 use crate::transaction::Signature;
-use crate::{owner_manager, transaction};
+use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
@@ -30,7 +32,6 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     let instruction = get_read_line();
     let accounts = get_read_line();
     let signers_seed = get_read_line();
-
     let mut timestamp = String::new();
     io::stdin().read_line(&mut timestamp).unwrap();
 
@@ -42,12 +43,23 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
         crate::anchor_lang::TIMESTAMP = timestamp;
     }
 
-    // todo validate signers_seed
+    let caller_program_id = get_read_line();
+    let caller_program_id = Pubkey::new(&caller_program_id);
     let signers_seed: Vec<Vec<Vec<u8>>> = bincode::deserialize(&signers_seed).unwrap();
-
     let instruction: Instruction = bincode::deserialize(&instruction).unwrap();
     let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
     let pubkeys: Vec<Pubkey> = instruction.accounts.iter().map(|acc| acc.pubkey).collect();
+
+    let pda_signature: Vec<Vec<&[u8]>> = signers_seed
+        .iter()
+        .map(|x| x.iter().map(|y| y.as_slice()).collect())
+        .collect();
+
+    let pda_signature: Vec<&[&[u8]]> = pda_signature.iter().map(|x| x.as_slice()).collect();
+    let pda_signature: &[&[&[u8]]] = pda_signature.as_slice();
+   
+    cpi::check_signature(&caller_program_id, &instruction, &pda_signature);
+
     println!("CPI accounts: {:?}", pubkeys);
     let accounts: Vec<AccountInfo<'a>> = accounts
         .iter()
@@ -84,7 +96,12 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
         owner_manager::add_ptr(p as *mut Pubkey, ordered_accounts[j].key.clone());
     }
 
-    (instruction.program_id, ordered_accounts, instruction.data, true)
+    (
+        instruction.program_id,
+        ordered_accounts,
+        instruction.data,
+        true,
+    )
 }
 
 fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
@@ -288,7 +305,12 @@ pub fn parse_processor_args<'a>(
     let program_id: &Pubkey = &tx.message.account_keys[pidx];
     for (i, key) in tx.message.account_keys.iter().enumerate() {
         let (data, lamports, owner) = load_account_info_data(&key);
-        println!("loading account with key = {:?}; data.len() = {}; program_id = {:?}", &key, data.len(), program_id);
+        println!(
+            "loading account with key = {:?}; data.len() = {}; program_id = {:?}",
+            &key,
+            data.len(),
+            program_id
+        );
         let mut is_signer = false;
         if tx.signatures.len() > i {
             let signature = &tx.signatures[i];
@@ -310,7 +332,7 @@ pub fn parse_processor_args<'a>(
     for (i, key) in tx.message.account_keys.iter().enumerate() {
         assert_eq!(key, accounts[i].key);
     }
-    
+
     let mut ordered_accounts: Vec<AccountInfo> = Vec::new();
     let tot = tx_instruction.accounts.len();
     for j in 0..tot {
@@ -330,7 +352,12 @@ pub fn parse_processor_args<'a>(
         println!("- ordered_accounts = {:?}", acc.key);
         println!("     owner = {:?}", acc.owner.to_string());
     }
-    println!("last_instruction = {}; {}/{}", last_instruction, instruction_index + 1, tx.message.instructions.len());
+    println!(
+        "last_instruction = {}; {}/{}",
+        last_instruction,
+        instruction_index + 1,
+        tx.message.instructions.len()
+    );
     (
         program_id.to_owned(),
         ordered_accounts,
