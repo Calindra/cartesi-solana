@@ -18,7 +18,7 @@ fn cpi_it_should_verify_the_signature_success() {
     let instruction = transfer(&escrow_pubkey, &alice_pubkey, 1);
 
     let signer_program_id = Pubkey::default();
-    check_signature(&signer_program_id, &instruction, pda_signature);
+    check_signature(&signer_program_id, &instruction, &[pda_signature]);
 }
 
 #[test]
@@ -37,6 +37,6 @@ fn cpi_it_should_verify_the_signature_fail() {
     let instruction = transfer(&escrow_pubkey, &alice_pubkey, 1);
 
     let signer_program_id = Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
-    check_signature(&signer_program_id, &instruction, pda_signature);
+    check_signature(&signer_program_id, &instruction, &[pda_signature]);
 }
 

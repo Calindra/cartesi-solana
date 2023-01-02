@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     account_manager::{create_account_manager, set_data},
-    anchor_lang::TIMESTAMP, owner_manager,
+    anchor_lang::TIMESTAMP, owner_manager, cpi,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -117,7 +117,8 @@ impl SyscallStubs for CartesiStubs {
         account_infos: &[AccountInfo], // chaves publicas
         signers_seeds: &[&[&[u8]]],
     ) -> Result<(), ProgramError> {
-        // @todo validate signers_seeds
+        cpi::check_signature(&self.program_id, instruction, signers_seeds);
+        
         let mut child = execute_spawn(instruction.program_id.to_string());
         let child_stdin = child.stdin.as_mut().unwrap();
 
@@ -140,7 +141,8 @@ impl SyscallStubs for CartesiStubs {
 
         let account_infos_serialized = bincode::serialize(&account_infos_serialized).unwrap();
         let account_infos_serialized = base64::encode(&account_infos_serialized);
-
+        let program_id_serialized = bincode::serialize(&self.program_id).unwrap();
+        let program_id_serialized = base64::encode(program_id_serialized);
         let signers_seeds = bincode::serialize(&signers_seeds).unwrap();
         let signers_seeds = base64::encode(&signers_seeds);
 
@@ -157,6 +159,9 @@ impl SyscallStubs for CartesiStubs {
         unsafe {
             child_stdin.write_all(TIMESTAMP.to_string().as_bytes())?;
         }
+        child_stdin.write_all(b"\n")?;
+
+        child_stdin.write_all(program_id_serialized.as_bytes())?;
         child_stdin.write_all(b"\n")?;
 
         drop(child_stdin);
