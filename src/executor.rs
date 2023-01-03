@@ -1,7 +1,10 @@
-use std::{cell::RefCell, io::Result, rc::Rc};
+use std::{
+    cell::RefCell,
+    io::{self, Result},
+    rc::Rc,
+};
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
-use solana_sdk::{account::Account as Acc, account::AccountSharedData};
 
 use crate::{
     account_manager::{create_account_manager, AccountFileData},
@@ -9,11 +12,11 @@ use crate::{
     transaction,
 };
 
-pub struct DataHolder {
-    pub pubkey: Pubkey,
-    pub lamports: u64,
-    pub data: Vec<u8>,
-    pub owner: Pubkey,
+struct DataHolder {
+    pubkey: Pubkey,
+    lamports: u64,
+    data: Vec<u8>,
+    owner: Pubkey,
 }
 
 pub struct Executor<'a, LR: LineReader> {
@@ -21,13 +24,22 @@ pub struct Executor<'a, LR: LineReader> {
     pub program_id: Option<Pubkey>,
     pub accounts: Vec<AccountInfo<'a>>,
     pub account_keys: Vec<Pubkey>,
-    pub data_holder: Vec<DataHolder>,
 }
 
 impl<'a, LR> Executor<'a, LR>
 where
     LR: LineReader,
 {
+    pub fn create_with_stdin(stdin: LR) -> Self {
+        let program_id = Some(Pubkey::default());
+
+        Self {
+            stdin,
+            program_id,
+            accounts: vec![],
+            account_keys: vec![],
+        }
+    }
     pub fn get_processor_args<F>(&'a mut self, f: F)
     where
         F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
@@ -82,10 +94,7 @@ where
         sender_bytes
     }
 
-    fn load_shared_data_from_transaction(
-        &self,
-        tx: &transaction::Transaction,
-    ) -> Vec<DataHolder> {
+    fn load_shared_data_from_transaction(&self, tx: &transaction::Transaction) -> Vec<DataHolder> {
         let mut data_holder = vec![];
         for (i, pkey) in tx.message.account_keys.iter().enumerate() {
             let (data, lamports, owner) = load_account_info_data(&pkey);
@@ -122,20 +131,20 @@ where
         let program_id = self.program_id.unwrap();
         let mut data_holder = self.load_shared_data_from_transaction(&tx);
         let mut accounts = vec![];
-        for (i, acc) in data_holder.iter_mut().enumerate() {
-            let key = &acc.pubkey;
+        for (i, holder) in data_holder.iter_mut().enumerate() {
+            let key = &holder.pubkey;
             let mut is_signer = false;
             if tx.signatures.len() > i {
                 let signature = &tx.signatures[i];
                 is_signer = check_signature(key, &sender_bytes, &signature);
             }
             let account_info = AccountInfo {
-                key: &acc.pubkey,
+                key: &holder.pubkey,
                 is_signer,
                 is_writable: true,
-                lamports: Rc::new(RefCell::new(&mut acc.lamports)),
-                data: Rc::new(RefCell::new(&mut acc.data)),
-                owner: &acc.owner,
+                lamports: Rc::new(RefCell::new(&mut holder.lamports)),
+                data: Rc::new(RefCell::new(&mut holder.data)),
+                owner: &holder.owner,
                 executable: false,
                 rent_epoch: 1,
             };
@@ -145,7 +154,6 @@ where
         closure_fn(program_id, &accounts, tx_instruction.data.to_owned());
         persist_accounts(data_holder);
     }
-
 }
 
 fn persist_accounts(data_holder: Vec<DataHolder>) {
@@ -172,4 +180,12 @@ fn persist_accounts(data_holder: Vec<DataHolder>) {
 
 pub trait LineReader {
     fn read_line(&mut self, buf: &mut String) -> Result<usize>;
+}
+
+pub struct DefaultStdin {}
+
+impl LineReader for DefaultStdin {
+    fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
+        return std::io::stdin().read_line(buf);
+    }
 }

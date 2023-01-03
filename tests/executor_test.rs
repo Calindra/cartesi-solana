@@ -2,14 +2,15 @@ use anchor_lang::prelude::Pubkey;
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, serialize_with_padding, AccountFileData},
-    executor::{Executor, LineReader},
+    adapter::load_account_info_data,
+    executor::{Executor, LineReader, DefaultStdin},
     owner_manager,
-    transaction::{self, Signature}, adapter::load_account_info_data,
+    transaction::{self, Signature},
 };
 use solana_sdk::{
     hash::Hash,
     instruction::CompiledInstruction,
-    message::{Message, MessageHeader},
+    message::{Message, MessageHeader}, account::AccountSharedData,
 };
 use std::{
     fmt::Write,
@@ -45,29 +46,18 @@ fn setup() {
 }
 
 #[test]
-fn executor_should_create_account_infos() {
+fn executor_should_load_program_args() {
     setup();
     let payload = create_payload();
-    let instruction_index = 0;
-    let timestamp = 123;
-    let stdin = MyLineReader {
-        lines: vec![
-            "Header: External CPI".to_string(),
-            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".to_string(),
-            payload,
-            instruction_index.to_string(),
-            timestamp.to_string(),
-        ],
-        current_line: 0,
-    };
-    let program_id = Some(Pubkey::default());
-    let mut executor = Executor {
-        stdin,
-        program_id,
-        accounts: vec![],
-        account_keys: vec![],
-        data_holder: vec![],
-    };
+    let stdin = MyLineReader::create(vec![
+        "Header: External CPI",
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        &payload,
+        "0", // instruction index
+        "12345", // timestamp
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
 
     create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
 
@@ -78,11 +68,62 @@ fn executor_should_create_account_infos() {
         );
         assert_eq!(accounts.len(), 7);
         assert_eq!(data, [141, 132, 233, 130, 168, 183, 10, 119]);
+    });
+}
+
+#[test]
+fn executor_should_load_change_and_save_account_infos() {
+    setup();
+    let payload = create_payload();
+    let stdin = MyLineReader::create(vec![
+        "Header: External CPI",
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        &payload,
+        "0", // instruction index
+        "12345", // timestamp
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+
+    create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
+
+    executor.get_processor_args(|_program_id, accounts, _data| {
         let borsh_structure = BorshStructure {
             key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
         };
         let account_info = &accounts[1];
-        println!("pubkey = {:?}", account_info.key);
+        **account_info.lamports.try_borrow_mut().unwrap() += 100;
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+
+    let (data, _, _) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap();
+    assert_eq!(data, expected.to_bytes());
+}
+
+#[test]
+fn executor_should_save_account_info_resized() {
+    setup();
+    let payload = create_payload();
+    let stdin = MyLineReader::create(vec![
+        "Header: External CPI",
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        &payload,
+        "0", // instruction index
+        "12345", // timestamp
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        let account_info = &accounts[1];
         account_manager::set_data_size(account_info, 32);
         **account_info.lamports.try_borrow_mut().unwrap() += 100;
         borsh_structure
@@ -90,9 +131,16 @@ fn executor_should_create_account_infos() {
             .unwrap();
     });
 
-    let (data, _, _) = load_account_info_data(&Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap());
+    let (data, _, _) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
     let expected = Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap();
     assert_eq!(data, expected.to_bytes());
+}
+
+fn _executor() {
+    let stdin = DefaultStdin{};
+    Executor::create_with_stdin(stdin);
 }
 
 fn create_account_with_space(key: &str, space: usize) {
@@ -118,6 +166,17 @@ struct MyLineReader {
     pub lines: Vec<String>,
     pub current_line: usize,
 }
+
+impl MyLineReader {
+    fn create(lines: Vec<&str>) -> Self {
+        let lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+        Self {
+            lines,
+            current_line: 0,
+        }
+    }
+}
+
 impl LineReader for MyLineReader {
     fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
         let line_with_ender = format!("{}\n", &self.lines[self.current_line]);
