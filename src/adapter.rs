@@ -1,10 +1,11 @@
 use crate::account_manager::{
-    self, create_account_info, create_account_manager, set_data, AccountFileData,
+    self, create_account_info, create_account_manager, AccountFileData,
 };
+use crate::cartesi_stub::CartesiStubs;
 use crate::transaction::Signature;
 use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
-use anchor_lang::solana_program::instruction::Instruction;
+use anchor_lang::solana_program::{self,instruction::Instruction};
 use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -140,10 +141,12 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
         io::stdin().read_line(&mut header).unwrap();
         println!("header: {}", header);
 
-        match check_header(header.as_str()) {
-            SmartContractType::ExternalPi => get_processor_args_from_external(),
+        let tuple = match check_header(header.as_str()) {
+            SmartContractType::ExternalPI => get_processor_args_from_external(),
             SmartContractType::CPI => get_processor_args_from_cpi(),
-        }
+        };
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id: tuple.0.clone() }));
+        tuple
     }
 }
 
@@ -171,16 +174,16 @@ fn call_smart_contract_cpi(solana_program_entrypoint: SolanaEntrypoint) -> io::R
     Ok(())
 }
 
-enum SmartContractType {
-    ExternalPi,
+pub enum SmartContractType {
+    ExternalPI,
     CPI,
 }
 
-fn check_header(header: &str) -> SmartContractType {
+pub fn check_header(header: &str) -> SmartContractType {
     let header = header.trim();
 
     if header == "Header: External CPI" {
-        SmartContractType::ExternalPi
+        SmartContractType::ExternalPI
     } else if header == "Header: CPI" {
         SmartContractType::CPI
     } else {
@@ -238,7 +241,7 @@ pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
             SmartContractType::CPI => {
                 call_solana_cpi(entry)?;
             }
-            SmartContractType::ExternalPi => {
+            SmartContractType::ExternalPI => {
                 call_solana_program_external(entry)?;
             }
         }
