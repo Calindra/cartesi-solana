@@ -1,18 +1,52 @@
 use anchor_lang::prelude::Pubkey;
+use borsh::BorshSerialize;
 use cartesi_solana::{
+    account_manager::{self, create_account_manager, serialize_with_padding, AccountFileData},
     executor::{Executor, LineReader},
-    transaction::{self, Signature},
+    owner_manager,
+    transaction::{self, Signature}, adapter::load_account_info_data,
 };
 use solana_sdk::{
     hash::Hash,
     instruction::CompiledInstruction,
     message::{Message, MessageHeader},
 };
+use std::{
+    fmt::Write,
+    fs, io,
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use std::{fmt::{Write, format}, io, str::FromStr};
+fn setup() {
+    println!("\n\n***** setup *****\n");
+    let dir = std::env::temp_dir();
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+    let final_temp_dir = format!(
+        "{}/{}",
+        dir.as_os_str().to_str().unwrap(),
+        since_the_epoch.subsec_nanos()
+    );
+    println!("{}", final_temp_dir);
+    fs::create_dir(&final_temp_dir).unwrap();
+    std::env::set_var("SOLANA_DATA_PATH", final_temp_dir);
+    std::env::set_var(
+        "PORTAL_ADDRESS",
+        "0xf8c694fd58360de278d5ff2276b7130bfdc0192a",
+    );
+    unsafe {
+        owner_manager::POINTERS.clear();
+        owner_manager::OWNERS.clear();
+    }
+    account_manager::clear();
+}
 
 #[test]
-fn it_should_create_account_infos() {
+fn executor_should_create_account_infos() {
+    setup();
     let payload = create_payload();
     let instruction_index = 0;
     let timestamp = 123;
@@ -27,17 +61,57 @@ fn it_should_create_account_infos() {
         current_line: 0,
     };
     let program_id = Some(Pubkey::default());
-    let shared_data = vec![];
     let mut executor = Executor {
         stdin,
         program_id,
-        shared_data,
-        accounts_sdk: vec![],
-        accounts_mut: vec![],
         accounts: vec![],
+        account_keys: vec![],
+        data_holder: vec![],
     };
-    let (program_id, accounts, data) = executor.get_processor_args();
-    assert_eq!(program_id.to_string(), "2QB8wEBJ8jjMQuZPvj3jaZP7JJb5j21u4xbxTnwsZRfv".to_string());
+
+    create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
+
+    executor.get_processor_args(|program_id, accounts, data| {
+        assert_eq!(
+            program_id.to_string(),
+            "2QB8wEBJ8jjMQuZPvj3jaZP7JJb5j21u4xbxTnwsZRfv".to_string()
+        );
+        assert_eq!(accounts.len(), 7);
+        assert_eq!(data, [141, 132, 233, 130, 168, 183, 10, 119]);
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        let account_info = &accounts[1];
+        println!("pubkey = {:?}", account_info.key);
+        account_manager::set_data_size(account_info, 32);
+        **account_info.lamports.try_borrow_mut().unwrap() += 100;
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+
+    let (data, _, _) = load_account_info_data(&Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap());
+    let expected = Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap();
+    assert_eq!(data, expected.to_bytes());
+}
+
+fn create_account_with_space(key: &str, space: usize) {
+    let key = Pubkey::from_str(&key).unwrap();
+    let account_manager = create_account_manager();
+    let owner = Pubkey::default();
+    let account_file_data = AccountFileData {
+        owner,
+        data: vec![0u8; space],
+        lamports: 100,
+    };
+    account_manager
+        .write_account(&key, &account_file_data)
+        .unwrap();
+}
+
+#[derive(BorshSerialize)]
+struct BorshStructure {
+    key: Pubkey,
 }
 
 struct MyLineReader {

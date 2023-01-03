@@ -1,30 +1,43 @@
-use std::io::Result;
+use std::{cell::RefCell, io::Result, rc::Rc};
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
-use solana_sdk::{account::Account as Acc, account::AccountSharedData, account_info::Account};
+use solana_sdk::{account::Account as Acc, account::AccountSharedData};
 
-use crate::{adapter::check_header, transaction};
+use crate::{
+    account_manager::{create_account_manager, AccountFileData},
+    adapter::{check_header, check_signature, load_account_info_data},
+    transaction,
+};
+
+pub struct DataHolder {
+    pub pubkey: Pubkey,
+    pub lamports: u64,
+    pub data: Vec<u8>,
+    pub owner: Pubkey,
+}
 
 pub struct Executor<'a, LR: LineReader> {
     pub stdin: LR,
     pub program_id: Option<Pubkey>,
-    pub shared_data: Vec<AccountSharedData>,
-    pub accounts_sdk: Vec<Acc>,
-    pub accounts_mut: Vec<&'a mut Acc>,
     pub accounts: Vec<AccountInfo<'a>>,
+    pub account_keys: Vec<Pubkey>,
+    pub data_holder: Vec<DataHolder>,
 }
 
 impl<'a, LR> Executor<'a, LR>
 where
     LR: LineReader,
 {
-    pub fn get_processor_args(&'a mut self) -> (Pubkey, &Vec<AccountInfo<'a>>, Vec<u8>) {
+    pub fn get_processor_args<F>(&'a mut self, f: F)
+    where
+        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+    {
         let header = self.read_line();
         println!("header: {}", header);
         match check_header(&header) {
-            crate::adapter::SmartContractType::ExternalPI => self.handle_external_call(),
+            crate::adapter::SmartContractType::ExternalPI => self.handle_external_call(f),
             crate::adapter::SmartContractType::CPI => todo!(),
-        }
+        };
     }
 
     fn read_line(&mut self) -> String {
@@ -69,8 +82,35 @@ where
         sender_bytes
     }
 
-    fn handle_external_call(&'a mut self) -> (Pubkey, &Vec<AccountInfo<'a>>, Vec<u8>) {
-        let msg_sender = self.read_line();
+    fn load_shared_data_from_transaction(
+        &self,
+        tx: &transaction::Transaction,
+    ) -> Vec<DataHolder> {
+        let mut data_holder = vec![];
+        for (i, pkey) in tx.message.account_keys.iter().enumerate() {
+            let (data, lamports, owner) = load_account_info_data(&pkey);
+            println!(
+                "loading account[{}] with key = {:?}; data.len() = {}; program_id = {:?}",
+                i,
+                &pkey,
+                data.len(),
+                self.program_id
+            );
+            data_holder.push(DataHolder {
+                pubkey: pkey.to_owned(),
+                lamports,
+                data,
+                owner,
+            });
+        }
+        data_holder
+    }
+
+    fn handle_external_call<F>(&'a mut self, closure_fn: F)
+    where
+        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+    {
+        let msg_sender = self.read_line(); // the order of read commands is important!
         let sender_bytes = self.sender_bytes(&msg_sender);
         let tx = self.read_transaction();
         let instruction_index = self.read_instruction_index();
@@ -80,30 +120,53 @@ where
         let program_id: &Pubkey = &tx.message.account_keys[pidx];
         self.program_id = Some(program_id.to_owned());
         let program_id = self.program_id.unwrap();
+        let mut data_holder = self.load_shared_data_from_transaction(&tx);
+        let mut accounts = vec![];
+        for (i, acc) in data_holder.iter_mut().enumerate() {
+            let key = &acc.pubkey;
+            let mut is_signer = false;
+            if tx.signatures.len() > i {
+                let signature = &tx.signatures[i];
+                is_signer = check_signature(key, &sender_bytes, &signature);
+            }
+            let account_info = AccountInfo {
+                key: &acc.pubkey,
+                is_signer,
+                is_writable: true,
+                lamports: Rc::new(RefCell::new(&mut acc.lamports)),
+                data: Rc::new(RefCell::new(&mut acc.data)),
+                owner: &acc.owner,
+                executable: false,
+                rent_epoch: 1,
+            };
+            accounts.push(account_info);
+        }
 
-        let instruction_data = vec![];
+        closure_fn(program_id, &accounts, tx_instruction.data.to_owned());
+        persist_accounts(data_holder);
+    }
 
-        static key: anchor_lang::prelude::Pubkey = Pubkey::new_from_array([0u8; 32]);
-        let lamports = 1;
-        let space = 0;
-        let owner = Pubkey::default();
-        let account_shared_data = AccountSharedData::new(lamports, space, &owner);
-        self.shared_data.push(account_shared_data);
-        for shared in self.shared_data.iter() {
-            let account = Acc::from(shared.clone());
-            self.accounts_sdk.push(account);
+}
+
+fn persist_accounts(data_holder: Vec<DataHolder>) {
+    let account_manager = create_account_manager();
+    for (_i, holder) in data_holder.iter().enumerate() {
+        let key = &holder.pubkey;
+        let account_file_data = AccountFileData {
+            owner: holder.owner,
+            data: holder.data.to_owned(),
+            lamports: holder.lamports,
+        };
+        if account_file_data.lamports <= 0 {
+            account_manager.delete_account(&key).unwrap();
+            println!("! deleted = {:?}", key);
+        } else {
+            account_manager
+                .write_account(&key, &account_file_data)
+                .unwrap();
+            println!("   saved = {:?};", key);
+            println!("     owner = {:?}", account_file_data.owner.to_string());
         }
-        for acc in self.accounts_sdk.iter_mut() {
-            self.accounts_mut.push(acc);
-        }
-        for acc in self.accounts_mut.iter_mut() {
-            let (lamports, data, owner, executable, rent_epoch) = acc.get();
-            let account_info = AccountInfo::new(
-                &key, false, true, lamports, data, owner, executable, rent_epoch,
-            );
-            self.accounts.push(account_info);
-        }
-        (program_id, &self.accounts, instruction_data)
     }
 }
 

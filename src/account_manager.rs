@@ -6,9 +6,15 @@ use std::cell::RefCell;
 use std::io::ErrorKind::NotFound;
 use std::rc::Rc;
 use std::{fs, str::FromStr};
+use std::sync::Mutex;
 // use solana_sdk::account::AccountSharedData;
+
 static mut ACCOUNT_INFO_DATA: Vec<Vec<u8>> = Vec::new();
 static mut MEM_DATA: Vec<AccountMemData> = Vec::new();
+
+lazy_static::lazy_static! {
+    static ref INFO_DATA: Mutex<Vec<AccountMemData>> = Mutex::new(Vec::new());
+}
 
 struct AccountMemData {
     key: Pubkey,
@@ -18,6 +24,7 @@ struct AccountMemData {
 }
 
 pub fn clear() {
+    INFO_DATA.lock().unwrap().clear();
     unsafe {
         MEM_DATA.clear();
         ACCOUNT_INFO_DATA.clear();
@@ -27,7 +34,7 @@ pub fn clear() {
 pub fn serialize_with_padding<B: BorshSerialize>(account_info: &AccountInfo, borsh_structure: &B) {
     // borsh_structure.serialize(&mut *account_info.data.borrow_mut()).unwrap();
 
-    let mut serialized_data = vec![0u8;0];
+    let mut serialized_data = vec![0u8; 0];
     borsh_structure.serialize(&mut serialized_data).unwrap();
     let diff = account_info.data_len() - serialized_data.len();
     for _ in 0..diff {

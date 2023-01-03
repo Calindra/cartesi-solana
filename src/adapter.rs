@@ -249,7 +249,7 @@ pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
     Ok(())
 }
 
-fn load_account_info_data(pubkey: &Pubkey) -> (Vec<u8>, u64, Pubkey) {
+pub fn load_account_info_data(pubkey: &Pubkey) -> (Vec<u8>, u64, Pubkey) {
     let account_manager = create_account_manager();
     let read_account_data_file = account_manager.read_account(&pubkey);
     match read_account_data_file {
@@ -277,7 +277,7 @@ pub struct AccountJson {
     lamports: String,
 }
 
-fn check_signature(key: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
+pub fn check_signature(key: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
     sender_bytes == &key.to_bytes()[12..]
 }
 
