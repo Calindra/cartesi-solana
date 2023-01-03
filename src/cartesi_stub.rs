@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize, Clone)]
-struct AccountInfoSerialize {
+pub struct AccountInfoSerialize {
     pub key: Pubkey,
     pub is_signer: bool,
     pub is_writable: bool,

@@ -5,12 +5,15 @@ use std::{
 };
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
-use solana_sdk::instruction::CompiledInstruction;
+use anchor_spl::token::spl_token::instruction;
+use solana_sdk::instruction::{CompiledInstruction, Instruction};
 
 use crate::{
     account_manager::{self, create_account_manager, AccountFileData},
     adapter::{check_header, check_signer_by_sender, load_account_info_data},
-    owner_manager, transaction, cartesi_stub::CartesiStubs, anchor_lang::solana_program,
+    anchor_lang::solana_program,
+    cartesi_stub::{AccountInfoSerialize, CartesiStubs},
+    cpi, owner_manager, transaction,
 };
 
 struct DataHolder {
@@ -41,15 +44,15 @@ where
             account_keys: vec![],
         }
     }
-    pub fn get_processor_args<F>(&'a mut self, f: F)
+    pub fn get_processor_args<F>(&'a mut self, closure_fn: F)
     where
         F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
     {
         let header = self.read_line();
         println!("header: {}", header);
         match check_header(&header) {
-            crate::adapter::SmartContractType::ExternalPI => self.handle_external_call(f),
-            crate::adapter::SmartContractType::CPI => todo!(),
+            crate::adapter::SmartContractType::ExternalPI => self.handle_external_call(closure_fn),
+            crate::adapter::SmartContractType::CPI => self.handle_cpi_call(closure_fn),
         };
     }
 
@@ -131,6 +134,110 @@ where
         ordered_accounts
     }
 
+    fn read_cpi_instruction(&mut self) -> Instruction {
+        let instruction = self.read_line();
+        let instruction = base64::decode(&instruction.trim()).unwrap();
+        let instruction: Instruction = bincode::deserialize(&instruction).unwrap();
+        instruction
+    }
+
+    fn read_cpi_accounts(&mut self) -> Vec<AccountInfoSerialize> {
+        let accounts = self.read_line();
+        let accounts = base64::decode(accounts).unwrap();
+        let accounts: Vec<AccountInfoSerialize> = bincode::deserialize(&accounts).unwrap();
+        accounts
+    }
+
+    fn read_signers_seeds(&mut self) -> Vec<Vec<Vec<u8>>> {
+        let signers_seed = self.read_line();
+        let signers_seed = base64::decode(signers_seed).unwrap();
+        let signers_seed: Vec<Vec<Vec<u8>>> = bincode::deserialize(&signers_seed).unwrap();
+        signers_seed
+    }
+
+    fn read_pubkey(&mut self) -> Pubkey {
+        let caller_program_id = self.read_line();
+        let caller_program_id = base64::decode(caller_program_id).unwrap();
+        let caller_program_id = Pubkey::new(&caller_program_id);
+        caller_program_id
+    }
+
+    fn handle_cpi_call<F>(&mut self, closure_fn: F)
+    where
+        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+    {
+        let instruction = self.read_cpi_instruction();
+        let accounts = self.read_cpi_accounts();
+        let signers_seeds = self.read_signers_seeds();
+
+        self.read_and_set_timestamp();
+        let caller_program_id = self.read_pubkey();
+
+        let pda_signature: Vec<Vec<&[u8]>> = signers_seeds
+            .iter()
+            .map(|x| x.iter().map(|y| y.as_slice()).collect())
+            .collect();
+
+        let pda_signature: Vec<&[&[u8]]> = pda_signature.iter().map(|x| x.as_slice()).collect();
+        let pda_signature: &[&[&[u8]]] = pda_signature.as_slice();
+
+        cpi::check_signature(&caller_program_id, &instruction, &pda_signature);
+        let pubkeys: Vec<Pubkey> = instruction.accounts.iter().map(|acc| acc.pubkey).collect();
+
+        let mut ordered_accounts = vec![];
+        for key in pubkeys.iter() {
+            let account_find = accounts.iter().find(|acc| &acc.key == key);
+            match account_find {
+                Some(account_serialize) => ordered_accounts.push(account_serialize.to_owned()),
+                None => panic!("Account not found {:?}", key),
+            }
+        }
+
+        let mut accounts: Vec<AccountInfo> = ordered_accounts
+            .iter_mut()
+            .map(|account| AccountInfo {
+                key: &account.key,
+                is_signer: account.is_signer,
+                is_writable: true,
+                lamports: Rc::new(RefCell::new(&mut account.lamports)),
+                data: Rc::new(RefCell::new(&mut account.data)),
+                owner: &account.owner,
+                executable: false,
+                rent_epoch: 1,
+            })
+            .collect();
+        
+            // the addresses changes when you push to vec
+        // so we need to get the pointers here, after
+        let tot = accounts.len();
+        for j in 0..tot {
+            let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
+            owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
+        }
+
+        closure_fn(instruction.program_id, &accounts, instruction.data);
+        let new_owners: Vec<Pubkey> = accounts
+            .iter()
+            .map(|account| account.owner.to_owned())
+            .collect();
+        let data_holder: Vec<DataHolder> = self.to_data_holder(ordered_accounts);
+
+        persist_accounts(data_holder, new_owners);
+    }
+
+    fn to_data_holder(&mut self, ordered_accounts: Vec<AccountInfoSerialize>) -> Vec<DataHolder> {
+        let data_holder: Vec<DataHolder> = ordered_accounts
+            .iter()
+            .map(|account| DataHolder {
+                pubkey: account.key.to_owned(),
+                lamports: account.lamports,
+                data: account.data.to_vec(),
+                owner: account.owner.to_owned(),
+            })
+            .collect();
+        data_holder
+    }
+
     fn handle_external_call<F>(&'a mut self, closure_fn: F)
     where
         F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
@@ -143,7 +250,9 @@ where
         let tx_instruction = &tx.message.instructions[instruction_index];
         let pidx: usize = (tx_instruction.program_id_index).into();
         let program_id: &Pubkey = &tx.message.account_keys[pidx];
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id: program_id.clone() }));
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
+            program_id: program_id.clone(),
+        }));
 
         self.program_id = Some(program_id.to_owned());
         let program_id = self.program_id.unwrap();
@@ -182,6 +291,11 @@ where
             .collect();
         persist_accounts(data_holder, new_owners);
     }
+}
+
+pub fn create<'b>() -> Executor<'b, DefaultStdin> {
+    let stdin = DefaultStdin {};
+    Executor::create_with_stdin(stdin)
 }
 
 fn persist_accounts(data_holder: Vec<DataHolder>, new_owners: Vec<Pubkey>) {

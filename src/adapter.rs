@@ -1,7 +1,7 @@
 use crate::account_manager::{
     self, create_account_info, create_account_manager, AccountFileData,
 };
-use crate::cartesi_stub::CartesiStubs;
+use crate::cartesi_stub::{CartesiStubs, AccountInfoSerialize};
 use crate::transaction::Signature;
 use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
@@ -148,18 +148,6 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
         solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id: tuple.0.clone() }));
         tuple
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct AccountInfoSerialize {
-    pub key: Pubkey,
-    pub is_signer: bool,
-    pub is_writable: bool,
-    pub lamports: u64,
-    pub data: Vec<u8>,
-    pub owner: Pubkey,
-    pub executable: bool,
-    pub rent_epoch: u64,
 }
 
 type SolanaEntrypoint = fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult;

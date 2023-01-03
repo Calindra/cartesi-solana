@@ -1,8 +1,10 @@
-use anchor_lang::prelude::Pubkey;
+use anchor_lang::prelude::{AccountMeta, Pubkey};
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},
     adapter::load_account_info_data,
+    anchor_lang::solana_program,
+    cartesi_stub::AccountInfoSerialize,
     executor::{DefaultStdin, Executor, LineReader},
     owner_manager,
     transaction::{self, Signature},
@@ -181,6 +183,190 @@ fn executor_with_default_stdin() {
     Executor::create_with_stdin(stdin);
 }
 
+#[test]
+fn executor_cpi_read_arguments() {
+    setup();
+    let payload = create_instruction_payload();
+    let cpi_accounts = create_cpi_accounts(0);
+    let signers_seeds = create_signers_seeds();
+    let caller_program_id = create_cpi_program_id();
+    let stdin = MyLineReader::create(vec![
+        "Header: CPI",
+        &payload,
+        &cpi_accounts,
+        &signers_seeds,
+        "12345", // timestamp
+        &caller_program_id,
+    ]);
+    let mut executor = Executor::create_with_stdin(stdin);
+    executor.get_processor_args(|program_id, accounts, data| {
+        let spl_token_program_id =
+            Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        assert_eq!(program_id, spl_token_program_id);
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(data, [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]);
+    });
+}
+
+#[test]
+fn executor_cpi_save_borsh_serialization() {
+    setup();
+    let payload = create_instruction_payload();
+    let cpi_accounts = create_cpi_accounts(32);
+    let signers_seeds = create_signers_seeds();
+    let caller_program_id = create_cpi_program_id();
+    let stdin = MyLineReader::create(vec![
+        "Header: CPI",
+        &payload,
+        &cpi_accounts,
+        &signers_seeds,
+        "12345", // timestamp
+        &caller_program_id,
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        let account_info = &accounts[0];
+        **account_info.lamports.try_borrow_mut().unwrap() += 100;
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+    let (data, _, _) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap();
+    assert_eq!(data, expected.to_bytes());
+}
+
+#[test]
+fn executor_cpi_save_borsh_serialization_with_account_data_resize() {
+    setup();
+    let payload = create_instruction_payload();
+    let cpi_accounts = create_cpi_accounts(0);
+    let signers_seeds = create_signers_seeds();
+    let caller_program_id = create_cpi_program_id();
+    let stdin = MyLineReader::create(vec![
+        "Header: CPI",
+        &payload,
+        &cpi_accounts,
+        &signers_seeds,
+        "12345", // timestamp
+        &caller_program_id,
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        let account_info = &accounts[0];
+
+        // resize the account data
+        account_manager::set_data_size(account_info, 32);
+        **account_info.lamports.try_borrow_mut().unwrap() += 100;
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+    let (data, _, _) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap();
+    assert_eq!(data, expected.to_bytes());
+}
+
+#[test]
+fn executor_cpi_save_new_owner() {
+    setup();
+    let payload = create_instruction_payload();
+    let cpi_accounts = create_cpi_accounts(0);
+    let signers_seeds = create_signers_seeds();
+    let caller_program_id = create_cpi_program_id();
+    let stdin = MyLineReader::create(vec![
+        "Header: CPI",
+        &payload,
+        &cpi_accounts,
+        &signers_seeds,
+        "12345", // timestamp
+        &caller_program_id,
+    ]);
+
+    create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let account_info = &accounts[0];
+        let new_owner = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        owner_manager::change_owner(*account_info.key, new_owner);
+        **account_info.lamports.try_borrow_mut().unwrap() += 1234567;
+    });
+    let (_, lamports, owner) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    assert_eq!(owner, expected);
+    assert_eq!(lamports, 1234567);
+}
+
+#[test]
+fn executor_cpi_save_new_owner_and_serialize() {
+    setup();
+    let payload = create_instruction_payload();
+    let cpi_accounts = create_cpi_accounts(32);
+    let signers_seeds = create_signers_seeds();
+    let caller_program_id = create_cpi_program_id();
+    let stdin = MyLineReader::create(vec![
+        "Header: CPI",
+        &payload,
+        &cpi_accounts,
+        &signers_seeds,
+        "12345", // timestamp
+        &caller_program_id,
+    ]);
+
+    create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let account_info = &accounts[0];
+        let expected_account_key = Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
+        assert_eq!(account_info.key, &expected_account_key);
+
+        let new_owner = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        owner_manager::change_owner(*account_info.key, new_owner);
+        **account_info.lamports.try_borrow_mut().unwrap() += 1234567;
+
+        // serialize borsh
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        assert_eq!(account_info.data_len(), 32);
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+    let (_, lamports, owner) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    assert_eq!(owner, expected);
+    assert_eq!(lamports, 1234567);
+}
+
+//
+// Helper functions
+//
+
+fn create_cpi_program_id() -> String {
+    let key = Pubkey::from_str("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s").unwrap();
+    let key = bincode::serialize(&key).unwrap();
+    base64::encode(key)
+}
+
 fn create_account_with_space(key: &str, space: usize) {
     let key = Pubkey::from_str(&key).unwrap();
     let account_manager = create_account_manager();
@@ -222,6 +408,46 @@ impl LineReader for MyLineReader {
         self.current_line += 1;
         Ok(1)
     }
+}
+
+fn create_instruction_payload() -> String {
+    let program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    let account_meta = AccountMeta {
+        pubkey: Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+        is_signer: false,
+        is_writable: false,
+    };
+    let accounts = vec![account_meta];
+    let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+    let instruction = solana_program::instruction::Instruction {
+        program_id,
+        accounts,
+        data,
+    };
+    let serialized = bincode::serialize(&instruction).unwrap();
+    base64::encode(serialized)
+}
+
+fn create_signers_seeds() -> String {
+    let signers_seeds: &[&[&[u8]]] = &[];
+    let signers_seeds = bincode::serialize(&signers_seeds).unwrap();
+    let signers_seeds = base64::encode(&signers_seeds);
+    signers_seeds
+}
+
+fn create_cpi_accounts(data_size: usize) -> String {
+    let accounts: Vec<AccountInfoSerialize> = vec![AccountInfoSerialize {
+        key: Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+        is_signer: false,
+        is_writable: false,
+        lamports: 0,
+        data: vec![0u8; data_size],
+        owner: Pubkey::default(),
+        executable: false,
+        rent_epoch: 1,
+    }];
+    let serialized = bincode::serialize(&accounts).unwrap();
+    base64::encode(serialized)
 }
 
 fn create_payload() -> String {
