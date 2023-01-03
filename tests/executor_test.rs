@@ -1,7 +1,7 @@
 use anchor_lang::prelude::Pubkey;
 use borsh::BorshSerialize;
 use cartesi_solana::{
-    account_manager::{self, create_account_manager, serialize_with_padding, AccountFileData},
+    account_manager::{self, create_account_manager, AccountFileData},
     adapter::load_account_info_data,
     executor::{Executor, LineReader, DefaultStdin},
     owner_manager,
@@ -10,7 +10,7 @@ use cartesi_solana::{
 use solana_sdk::{
     hash::Hash,
     instruction::CompiledInstruction,
-    message::{Message, MessageHeader}, account::AccountSharedData,
+    message::{Message, MessageHeader},
 };
 use std::{
     fmt::Write,
@@ -106,6 +106,41 @@ fn executor_should_load_change_and_save_account_infos() {
 }
 
 #[test]
+fn executor_should_change_the_owner() {
+    setup();
+    let payload = create_payload();
+    let stdin = MyLineReader::create(vec![
+        "Header: External CPI",
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        &payload,
+        "0", // instruction index
+        "12345", // timestamp
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+
+    executor.get_processor_args(|_program_id, accounts, _data| {
+        let borsh_structure = BorshStructure {
+            key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+        };
+        let account_info = &accounts[1];
+        let new_owner = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+        owner_manager::change_owner(*account_info.key, new_owner);
+        account_manager::set_data_size(account_info, 32);
+        **account_info.lamports.try_borrow_mut().unwrap() += 100;
+        borsh_structure
+            .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+            .unwrap();
+    });
+
+    let (_, _, owner) = load_account_info_data(
+        &Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap(),
+    );
+    let expected = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    assert_eq!(owner, expected);
+}
+
+#[test]
 fn executor_should_save_account_info_resized() {
     setup();
     let payload = create_payload();
@@ -138,7 +173,8 @@ fn executor_should_save_account_info_resized() {
     assert_eq!(data, expected.to_bytes());
 }
 
-fn _executor() {
+#[test]
+fn executor_with_default_stdin() {
     let stdin = DefaultStdin{};
     Executor::create_with_stdin(stdin);
 }

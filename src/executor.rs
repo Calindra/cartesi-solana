@@ -5,11 +5,12 @@ use std::{
 };
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
+use solana_sdk::nonce::state::Data;
 
 use crate::{
-    account_manager::{create_account_manager, AccountFileData},
+    account_manager::{create_account_manager, AccountFileData, self},
     adapter::{check_header, check_signature, load_account_info_data},
-    transaction,
+    owner_manager, transaction,
 };
 
 struct DataHolder {
@@ -151,18 +152,35 @@ where
             accounts.push(account_info);
         }
 
+        // the addresses changes when you push to vec
+        // so we need to get the pointers here, after
+        let tot = accounts.len();
+        for j in 0..tot {
+            let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
+            owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
+        }
+
         closure_fn(program_id, &accounts, tx_instruction.data.to_owned());
-        persist_accounts(data_holder);
+        let new_owners: Vec<Pubkey> = accounts
+            .iter()
+            .map(|account| account.owner.to_owned())
+            .collect();
+        persist_accounts(data_holder, new_owners);
     }
 }
 
-fn persist_accounts(data_holder: Vec<DataHolder>) {
+fn persist_accounts(data_holder: Vec<DataHolder>, new_owners: Vec<Pubkey>) {
     let account_manager = create_account_manager();
-    for (_i, holder) in data_holder.iter().enumerate() {
+    for (i, holder) in data_holder.iter().enumerate() {
         let key = &holder.pubkey;
+        let res = account_manager::get_resized(key);
+        let mut final_data = holder.data.to_owned();
+        if let Some(data) = res {
+            final_data = data;
+        }
         let account_file_data = AccountFileData {
-            owner: holder.owner,
-            data: holder.data.to_owned(),
+            owner: new_owners[i].to_owned(),
+            data: final_data.to_owned(),
             lamports: holder.lamports,
         };
         if account_file_data.lamports <= 0 {

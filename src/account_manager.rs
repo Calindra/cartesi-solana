@@ -1,16 +1,18 @@
 use anchor_lang::prelude::AccountInfo;
 use anchor_lang::prelude::Pubkey;
 use borsh::BorshSerialize;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::ErrorKind::NotFound;
 use std::rc::Rc;
-use std::{fs, str::FromStr};
 use std::sync::Mutex;
-// use solana_sdk::account::AccountSharedData;
+use std::{fs, str::FromStr};
 
 static mut ACCOUNT_INFO_DATA: Vec<Vec<u8>> = Vec::new();
 static mut MEM_DATA: Vec<AccountMemData> = Vec::new();
+static mut HASH_INFO_DATA: Lazy<HashMap<Pubkey, usize>> = Lazy::new(|| HashMap::new());
 
 lazy_static::lazy_static! {
     static ref INFO_DATA: Mutex<Vec<AccountMemData>> = Mutex::new(Vec::new());
@@ -28,6 +30,7 @@ pub fn clear() {
     unsafe {
         MEM_DATA.clear();
         ACCOUNT_INFO_DATA.clear();
+        HASH_INFO_DATA.clear();
     }
 }
 
@@ -65,6 +68,17 @@ pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
     }
 }
 
+pub fn get_resized(key: &Pubkey) -> Option<Vec<u8>> {
+    unsafe {
+        let res = HASH_INFO_DATA.get(key);
+        if let Some(index) = res {
+            Some(ACCOUNT_INFO_DATA[*index].to_owned())
+        } else {
+            None
+        }
+    }
+}
+
 pub fn set_data_size(account_info: &AccountInfo, size: usize) {
     unsafe {
         println!(
@@ -76,6 +90,7 @@ pub fn set_data_size(account_info: &AccountInfo, size: usize) {
             let data = vec![0; size];
             ACCOUNT_INFO_DATA.push(data);
             account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+            HASH_INFO_DATA.insert(account_info.key.to_owned(), tot);
         } else {
             println!("set_data_size: skipped");
         }

@@ -1,6 +1,7 @@
-use anchor_lang::prelude::{AccountInfo, Pubkey, ProgramError};
+use anchor_lang::prelude::{AccountInfo, ProgramError, Pubkey};
 use borsh::BorshSerialize;
 use cartesi_solana::account_manager::{self, create_account_info, serialize_with_padding};
+use solana_sdk::account::{ReadableAccount, WritableAccount};
 use solana_sdk::{account::Account as Acc, account::AccountSharedData, account_info::Account};
 use std::cell::RefMut;
 use std::io::Write;
@@ -56,7 +57,6 @@ fn it_should_serialize_with_shared_data() {
     let borsh_structure = BorshStructure {
         key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
     };
-
     let account_info2 = account_info.to_owned();
     let inner_data_vec = borsh_structure.try_to_vec().unwrap();
     assert_eq!(inner_data_vec.len(), 32);
@@ -95,6 +95,43 @@ fn it_should_serialize_with_shared_data_2() {
     assert_eq!(account_info.data_len(), 42);
     assert_eq!(account_info2.data_len(), 42);
     assert_eq!((*account_info.data.borrow())[0..32], inner_data_vec);
+}
+
+#[test]
+fn it_should_serialize_with_shared_data_3() {
+    let lamports = 1;
+    let space = 32;
+    let owner = Pubkey::default();
+    let key = Pubkey::default();
+    let mut asd = AccountSharedData::new(lamports, space, &owner);
+    //let mut account = Acc::from(asd);
+    //let (lamports, data, owner, executable, rent_epoch) = account.get();
+    let executable = false;
+    let rent_epoch = 1;
+    let binding = asd.data_mut();
+    // let account_info = AccountInfo::new(
+    //     &key, false, true, &mut asd.lamports(), &mut binding, asd.owner(), executable, rent_epoch,
+    // );
+
+    // let borsh_structure = BorshStructure {
+    //     key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
+    // };
+
+    // let account_info2 = account_info.to_owned();
+    // let inner_data_vec = borsh_structure.try_to_vec().unwrap();
+    // assert_eq!(inner_data_vec.len(), 32);
+    // let new_data = vec![0u8; 32];
+    // asd.set_data(new_data);
+    // borsh_structure
+    //     .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
+    //     .unwrap();
+    // account.data_mut().push(1);
+    // assert_eq!(account.data[..32], inner_data_vec);
+    //assert_eq!(account.data, inner_data_vec);
+
+    // assert_eq!(account_info.data_len(), 42);
+    // assert_eq!(account_info2.data_len(), 42);
+    // assert_eq!((*account_info.data.borrow())[0..32], inner_data_vec);
 }
 
 #[test]
