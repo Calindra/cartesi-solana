@@ -277,7 +277,7 @@ pub struct AccountJson {
     lamports: String,
 }
 
-pub fn check_signature(key: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
+pub fn check_signer_by_sender(key: &Pubkey, sender_bytes: &[u8]) -> bool {
     sender_bytes == &key.to_bytes()[12..]
 }
 
@@ -316,8 +316,7 @@ pub fn parse_processor_args<'a>(
         );
         let mut is_signer = false;
         if tx.signatures.len() > i {
-            let signature = &tx.signatures[i];
-            is_signer = check_signature(&key, &sender_bytes, &signature);
+            is_signer = check_signer_by_sender(&key, &sender_bytes);
         }
         let is_writable = true; // todo
         let executable = true;

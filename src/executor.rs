@@ -5,12 +5,12 @@ use std::{
 };
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
-use solana_sdk::nonce::state::Data;
+use solana_sdk::instruction::CompiledInstruction;
 
 use crate::{
-    account_manager::{create_account_manager, AccountFileData, self},
-    adapter::{check_header, check_signature, load_account_info_data},
-    owner_manager, transaction,
+    account_manager::{self, create_account_manager, AccountFileData},
+    adapter::{check_header, check_signer_by_sender, load_account_info_data},
+    owner_manager, transaction, cartesi_stub::CartesiStubs, anchor_lang::solana_program,
 };
 
 struct DataHolder {
@@ -95,9 +95,9 @@ where
         sender_bytes
     }
 
-    fn load_shared_data_from_transaction(&self, tx: &transaction::Transaction) -> Vec<DataHolder> {
+    fn load_persisted_data(&self, account_keys: &Vec<Pubkey>) -> Vec<DataHolder> {
         let mut data_holder = vec![];
-        for (i, pkey) in tx.message.account_keys.iter().enumerate() {
+        for (i, pkey) in account_keys.iter().enumerate() {
             let (data, lamports, owner) = load_account_info_data(&pkey);
             println!(
                 "loading account[{}] with key = {:?}; data.len() = {}; program_id = {:?}",
@@ -116,6 +116,21 @@ where
         data_holder
     }
 
+    fn get_ordered_account_keys(
+        &mut self,
+        tx: &transaction::Transaction,
+        tx_instruction: &CompiledInstruction,
+    ) -> Vec<Pubkey> {
+        let mut ordered_accounts: Vec<Pubkey> = Vec::new();
+        let tot = tx_instruction.accounts.len();
+        for j in 0..tot {
+            let index = tx_instruction.accounts[j];
+            let i: usize = index.into();
+            ordered_accounts.push(tx.message.account_keys[i].to_owned());
+        }
+        ordered_accounts
+    }
+
     fn handle_external_call<F>(&'a mut self, closure_fn: F)
     where
         F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
@@ -128,17 +143,17 @@ where
         let tx_instruction = &tx.message.instructions[instruction_index];
         let pidx: usize = (tx_instruction.program_id_index).into();
         let program_id: &Pubkey = &tx.message.account_keys[pidx];
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id: program_id.clone() }));
+
         self.program_id = Some(program_id.to_owned());
         let program_id = self.program_id.unwrap();
-        let mut data_holder = self.load_shared_data_from_transaction(&tx);
+        let ordered_accounts = self.get_ordered_account_keys(&tx, tx_instruction);
+
+        let mut data_holder = self.load_persisted_data(&ordered_accounts);
         let mut accounts = vec![];
-        for (i, holder) in data_holder.iter_mut().enumerate() {
+        for holder in data_holder.iter_mut() {
             let key = &holder.pubkey;
-            let mut is_signer = false;
-            if tx.signatures.len() > i {
-                let signature = &tx.signatures[i];
-                is_signer = check_signature(key, &sender_bytes, &signature);
-            }
+            let is_signer = check_signer_by_sender(key, &sender_bytes);
             let account_info = AccountInfo {
                 key: &holder.pubkey,
                 is_signer,

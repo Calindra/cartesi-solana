@@ -3,7 +3,7 @@ use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},
     adapter::load_account_info_data,
-    executor::{Executor, LineReader, DefaultStdin},
+    executor::{DefaultStdin, Executor, LineReader},
     owner_manager,
     transaction::{self, Signature},
 };
@@ -53,7 +53,7 @@ fn executor_should_load_program_args() {
         "Header: External CPI",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         &payload,
-        "0", // instruction index
+        "0",     // instruction index
         "12345", // timestamp
     ]);
 
@@ -66,7 +66,7 @@ fn executor_should_load_program_args() {
             program_id.to_string(),
             "2QB8wEBJ8jjMQuZPvj3jaZP7JJb5j21u4xbxTnwsZRfv".to_string()
         );
-        assert_eq!(accounts.len(), 7);
+        assert_eq!(accounts.len(), 6);
         assert_eq!(data, [141, 132, 233, 130, 168, 183, 10, 119]);
     });
 }
@@ -79,7 +79,7 @@ fn executor_should_load_change_and_save_account_infos() {
         "Header: External CPI",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         &payload,
-        "0", // instruction index
+        "0",     // instruction index
         "12345", // timestamp
     ]);
 
@@ -91,7 +91,9 @@ fn executor_should_load_change_and_save_account_infos() {
         let borsh_structure = BorshStructure {
             key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
         };
-        let account_info = &accounts[1];
+        let account_info = &accounts[0];
+        // let keys: Vec<Pubkey> = accounts.iter().map(|a| a.key.to_owned()).collect();
+        // println!("keys = {:?}", keys);
         **account_info.lamports.try_borrow_mut().unwrap() += 100;
         borsh_structure
             .serialize(&mut *account_info.try_borrow_mut_data().unwrap())
@@ -113,7 +115,7 @@ fn executor_should_change_the_owner() {
         "Header: External CPI",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         &payload,
-        "0", // instruction index
+        "0",     // instruction index
         "12345", // timestamp
     ]);
 
@@ -123,7 +125,7 @@ fn executor_should_change_the_owner() {
         let borsh_structure = BorshStructure {
             key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
         };
-        let account_info = &accounts[1];
+        let account_info = &accounts[0];
         let new_owner = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
         owner_manager::change_owner(*account_info.key, new_owner);
         account_manager::set_data_size(account_info, 32);
@@ -148,7 +150,7 @@ fn executor_should_save_account_info_resized() {
         "Header: External CPI",
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         &payload,
-        "0", // instruction index
+        "0",     // instruction index
         "12345", // timestamp
     ]);
 
@@ -158,7 +160,7 @@ fn executor_should_save_account_info_resized() {
         let borsh_structure = BorshStructure {
             key: Pubkey::from_str("4xRtyUw1QSVZSGi1BUb7nbYBk8TC9P1K1AE2xtxwaZmV").unwrap(),
         };
-        let account_info = &accounts[1];
+        let account_info = &accounts[0];
         account_manager::set_data_size(account_info, 32);
         **account_info.lamports.try_borrow_mut().unwrap() += 100;
         borsh_structure
@@ -175,7 +177,7 @@ fn executor_should_save_account_info_resized() {
 
 #[test]
 fn executor_with_default_stdin() {
-    let stdin = DefaultStdin{};
+    let stdin = DefaultStdin {};
     Executor::create_with_stdin(stdin);
 }
 
