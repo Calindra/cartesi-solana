@@ -5,7 +5,6 @@ use std::{
 };
 
 use anchor_lang::prelude::{AccountInfo, Pubkey};
-use anchor_spl::token::spl_token::instruction;
 use solana_sdk::instruction::{CompiledInstruction, Instruction};
 
 use crate::{
@@ -46,7 +45,7 @@ where
     }
     pub fn get_processor_args<F>(&'a mut self, closure_fn: F)
     where
-        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+        F: for<'b> Fn(&'b Pubkey, &'b Vec<AccountInfo<'b>>, &'b Vec<u8>),
     {
         let header = self.read_line();
         println!("header: {}", header);
@@ -164,7 +163,7 @@ where
 
     fn handle_cpi_call<F>(&mut self, closure_fn: F)
     where
-        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+        F: for<'b> Fn(&'b Pubkey, &'b Vec<AccountInfo<'b>>, &'b Vec<u8>),
     {
         let instruction = self.read_cpi_instruction();
         let accounts = self.read_cpi_accounts();
@@ -215,7 +214,7 @@ where
             owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
         }
 
-        closure_fn(instruction.program_id, &accounts, instruction.data);
+        closure_fn(&instruction.program_id, &accounts, &instruction.data);
         let new_owners: Vec<Pubkey> = accounts
             .iter()
             .map(|account| account.owner.to_owned())
@@ -240,7 +239,7 @@ where
 
     fn handle_external_call<F>(&'a mut self, closure_fn: F)
     where
-        F: Fn(Pubkey, &Vec<AccountInfo>, Vec<u8>),
+        F: for<'b> Fn(&'b Pubkey, &'b Vec<AccountInfo<'b>>, &'b Vec<u8>),
     {
         let msg_sender = self.read_line(); // the order of read commands is important!
         let sender_bytes = self.sender_bytes(&msg_sender);
@@ -284,7 +283,7 @@ where
             owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
         }
 
-        closure_fn(program_id, &accounts, tx_instruction.data.to_owned());
+        closure_fn(&program_id, &accounts, &tx_instruction.data);
         let new_owners: Vec<Pubkey> = accounts
             .iter()
             .map(|account| account.owner.to_owned())
@@ -293,7 +292,7 @@ where
     }
 }
 
-pub fn create<'b>() -> Executor<'b, DefaultStdin> {
+pub fn create_executor<'b>() -> Executor<'b, DefaultStdin> {
     let stdin = DefaultStdin {};
     Executor::create_with_stdin(stdin)
 }
@@ -314,12 +313,12 @@ fn persist_accounts(data_holder: Vec<DataHolder>, new_owners: Vec<Pubkey>) {
         };
         if account_file_data.lamports <= 0 {
             account_manager.delete_account(&key).unwrap();
-            println!("! deleted = {:?}", key);
+            println!("!e deleted = {:?}", key);
         } else {
             account_manager
                 .write_account(&key, &account_file_data)
                 .unwrap();
-            println!("   saved = {:?};", key);
+            println!("  e) saved = {:?};", key);
             println!("     owner = {:?}", account_file_data.owner.to_string());
         }
     }

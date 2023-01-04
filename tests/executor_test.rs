@@ -1,4 +1,4 @@
-use anchor_lang::prelude::{AccountMeta, Pubkey};
+use anchor_lang::prelude::{AccountInfo, AccountMeta, Pubkey};
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},
@@ -69,8 +69,35 @@ fn executor_should_load_program_args() {
             "2QB8wEBJ8jjMQuZPvj3jaZP7JJb5j21u4xbxTnwsZRfv".to_string()
         );
         assert_eq!(accounts.len(), 6);
-        assert_eq!(data, [141, 132, 233, 130, 168, 183, 10, 119]);
+        assert_eq!(data, &[141, 132, 233, 130, 168, 183, 10, 119]);
     });
+}
+
+#[test]
+fn executor_should_call_crazy_lifetime() {
+    setup();
+    let payload = create_payload();
+    let stdin = MyLineReader::create(vec![
+        "Header: External CPI",
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        &payload,
+        "0",     // instruction index
+        "12345", // timestamp
+    ]);
+
+    let mut executor = Executor::create_with_stdin(stdin);
+
+    create_account_with_space("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY", 32);
+
+    executor.get_processor_args(|program_id, accounts, data| {
+        process_instruction(&program_id, accounts, &data);
+    });
+}
+fn process_instruction<'a>(
+    _program_id: &'a Pubkey,
+    _accounts: &'a [AccountInfo<'a>],
+    _instruction_data: &[u8],
+) {
 }
 
 #[test]
@@ -202,9 +229,9 @@ fn executor_cpi_read_arguments() {
     executor.get_processor_args(|program_id, accounts, data| {
         let spl_token_program_id =
             Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
-        assert_eq!(program_id, spl_token_program_id);
+        assert_eq!(program_id, &spl_token_program_id);
         assert_eq!(accounts.len(), 1);
-        assert_eq!(data, [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]);
+        assert_eq!(data, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]);
     });
 }
 
@@ -333,7 +360,8 @@ fn executor_cpi_save_new_owner_and_serialize() {
     let mut executor = Executor::create_with_stdin(stdin);
     executor.get_processor_args(|_program_id, accounts, _data| {
         let account_info = &accounts[0];
-        let expected_account_key = Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
+        let expected_account_key =
+            Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
         assert_eq!(account_info.key, &expected_account_key);
 
         let new_owner = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();

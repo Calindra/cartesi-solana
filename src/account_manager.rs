@@ -64,6 +64,7 @@ pub fn set_data(account_info: &AccountInfo, data: Vec<u8>) {
             let tot = ACCOUNT_INFO_DATA.len();
             ACCOUNT_INFO_DATA.push(data);
             account_info.data.replace(&mut ACCOUNT_INFO_DATA[tot]);
+            HASH_INFO_DATA.insert(account_info.key.to_owned(), tot);
         }
     }
 }

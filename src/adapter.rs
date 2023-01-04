@@ -2,7 +2,6 @@ use crate::account_manager::{
     self, create_account_info, create_account_manager, AccountFileData,
 };
 use crate::cartesi_stub::{CartesiStubs, AccountInfoSerialize};
-use crate::transaction::Signature;
 use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::{self,instruction::Instruction};
