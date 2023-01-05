@@ -95,7 +95,7 @@ fn it_should_serialize_with_shared_data_2() {
 }
 
 #[test]
-fn it_should_serialize_with_borsh() {
+fn it_should_serialize_like_a_borsh() {
     let mut simple_array = [0u8; 5];
     let mut ref_simple: &mut [u8] = &mut simple_array;
 
@@ -104,6 +104,14 @@ fn it_should_serialize_with_borsh() {
     let new_data = vec![4, 5];
     ref_simple.write_all(&new_data.as_ref()).unwrap();
 
-    assert_eq!(simple_array.len(), 5);
-    assert_eq!(simple_array, [1, 2, 3, 4, 5])
+    assert_eq!(ref_simple.len(), 0); // tenho acesso somente a esse ref
+
+    unsafe {
+        let x = *ref_simple.as_ptr().offset(-2);
+        assert_eq!(4, x);
+    }
+
+    assert_eq!(simple_array.len(), 5); // tem como ler o simple array
+                                       // usando somente o ref_simple?
+    assert_eq!(simple_array, [1, 2, 3, 4, 5]);
 }

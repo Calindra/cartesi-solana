@@ -39,10 +39,7 @@ fn setup() {
         "PORTAL_ADDRESS",
         "0xf8c694fd58360de278d5ff2276b7130bfdc0192a",
     );
-    unsafe {
-        owner_manager::POINTERS.clear();
-        owner_manager::OWNERS.clear();
-    }
+    owner_manager::clear();
     account_manager::clear();
 }
 

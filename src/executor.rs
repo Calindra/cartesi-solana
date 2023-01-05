@@ -205,15 +205,18 @@ where
                 rent_epoch: 1,
             })
             .collect();
-        
-            // the addresses changes when you push to vec
+
+        // the addresses changes when you push to vec
         // so we need to get the pointers here, after
         let tot = accounts.len();
         for j in 0..tot {
             let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
             owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
         }
-
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
+            program_id: instruction.program_id.clone(),
+        }));
+        
         closure_fn(&instruction.program_id, &accounts, &instruction.data);
         let new_owners: Vec<Pubkey> = accounts
             .iter()
