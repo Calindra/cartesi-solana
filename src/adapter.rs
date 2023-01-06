@@ -1,8 +1,7 @@
 use crate::account_manager::{
     self, create_account_info, create_account_manager, AccountFileData,
 };
-use crate::cartesi_stub::CartesiStubs;
-use crate::transaction::Signature;
+use crate::cartesi_stub::{CartesiStubs, AccountInfoSerialize};
 use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::{self,instruction::Instruction};
@@ -150,18 +149,6 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct AccountInfoSerialize {
-    pub key: Pubkey,
-    pub is_signer: bool,
-    pub is_writable: bool,
-    pub lamports: u64,
-    pub data: Vec<u8>,
-    pub owner: Pubkey,
-    pub executable: bool,
-    pub rent_epoch: u64,
-}
-
 type SolanaEntrypoint = fn(&Pubkey, &[AccountInfo], &[u8]) -> ProgramResult;
 
 fn call_smart_contract_cpi(solana_program_entrypoint: SolanaEntrypoint) -> io::Result<()> {
@@ -277,7 +264,7 @@ pub struct AccountJson {
     lamports: String,
 }
 
-pub fn check_signature(key: &Pubkey, sender_bytes: &[u8], _signature: &Signature) -> bool {
+pub fn check_signer_by_sender(key: &Pubkey, sender_bytes: &[u8]) -> bool {
     sender_bytes == &key.to_bytes()[12..]
 }
 
@@ -316,8 +303,7 @@ pub fn parse_processor_args<'a>(
         );
         let mut is_signer = false;
         if tx.signatures.len() > i {
-            let signature = &tx.signatures[i];
-            is_signer = check_signature(&key, &sender_bytes, &signature);
+            is_signer = check_signer_by_sender(&key, &sender_bytes);
         }
         let is_writable = true; // todo
         let executable = true;

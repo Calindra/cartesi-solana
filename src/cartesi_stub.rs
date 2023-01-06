@@ -7,18 +7,18 @@ use std::{
 };
 
 use anchor_lang::{
-    prelude::{AccountInfo, ProgramError, Pubkey},
+    prelude::{AccountInfo, ProgramError, Pubkey, Clock},
     solana_program::{instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
     account_manager::{create_account_manager, set_data},
-    anchor_lang::TIMESTAMP, owner_manager, cpi,
+    anchor_lang::{TIMESTAMP, solana_program, prelude::Rent}, owner_manager, cpi,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
-struct AccountInfoSerialize {
+pub struct AccountInfoSerialize {
     pub key: Pubkey,
     pub is_signer: bool,
     pub is_writable: bool,
@@ -133,6 +133,8 @@ impl SyscallStubs for CartesiStubs {
                 is_writable: account.is_writable,
                 owner: account.owner.to_owned(),
                 lamports: account.lamports.borrow_mut().to_owned(),
+
+                // @todo: verify the serialized data by borsh
                 data: account.data.borrow_mut().to_vec(),
                 executable: account.executable,
                 rent_epoch: account.rent_epoch,
@@ -189,5 +191,26 @@ impl SyscallStubs for CartesiStubs {
         }
 
         Ok(())
+    }
+
+    fn sol_get_rent_sysvar(&self, var_addr: *mut u8) -> u64 {
+        unsafe {
+            // *(var_addr as *mut _ as *mut Rent) = Rent::default();
+            *(var_addr as *mut _ as *mut solana_program::rent::Rent) = Rent::default();
+        }
+        solana_program::entrypoint::SUCCESS
+    }
+
+    fn sol_get_clock_sysvar(&self, var_addr: *mut u8) -> u64 {
+        unsafe {
+            *(var_addr as *mut _ as *mut Clock) = Clock {
+                slot: 1,
+                epoch_start_timestamp: crate::anchor_lang::TIMESTAMP,
+                epoch: 1,
+                leader_schedule_epoch: 1,
+                unix_timestamp: crate::anchor_lang::TIMESTAMP,
+            };
+        }
+        solana_program::entrypoint::SUCCESS
     }
 }

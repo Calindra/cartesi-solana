@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anchor_lang::{prelude::Pubkey, solana_program::{system_instruction::transfer, instruction::Instruction}};
+use anchor_lang::{prelude::Pubkey, solana_program::{system_instruction::transfer}};
 use cartesi_solana::cpi::check_signature;
 
 #[test]

@@ -1,16 +1,14 @@
-use anchor_lang::prelude::{Pubkey, msg};
-pub static mut OWNERS: Vec<Pubkey> = Vec::new();
+use anchor_lang::prelude::{msg, Pubkey};
 
-/*
-#0 170.8 error[E0015]: cannot call non-const fn `Mutex::<Vec<(*mut &Pubkey, Pubkey)>>::new` in statics
-#0 170.8  --> ctsi_sol/src/owner_manager.rs:7:63
-#0 170.8   |
-#0 170.8 7 | pub static mut POINTERS: Mutex<Vec<(*mut &Pubkey, Pubkey)>> = Mutex::new(vec![]);
-#0 170.8   |                                                               ^^^^^^^^^^^^^^^^^^
-#0 170.8   |
-#0 170.8   = note: calls in statics are limited to constant functions, tuple structs and tuple variants
-*/
-pub static mut POINTERS: Vec<(*mut &Pubkey, Pubkey)> = Vec::new();
+static mut OWNERS: Vec<Pubkey> = Vec::new();
+static mut POINTERS: Vec<(*mut &Pubkey, Pubkey)> = Vec::new();
+
+pub fn clear() {
+    unsafe {
+        OWNERS.clear();
+        POINTERS.clear();
+    }
+}
 
 pub fn add_ptr(p: *mut Pubkey, key: Pubkey) {
     unsafe {
@@ -40,4 +38,3 @@ pub fn change_owner<'a>(key: Pubkey, new_owner: Pubkey) {
         panic!("Account [{:?}] not found, change owner failed.", key);
     }
 }
-
