@@ -1,14 +1,33 @@
-use crate::account_manager::{
-    self, create_account_info, create_account_manager, AccountFileData,
-};
-use crate::cartesi_stub::{CartesiStubs, AccountInfoSerialize};
+use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData};
+use crate::cartesi_stub::{AccountInfoSerialize, CartesiStubs};
 use crate::{cpi, owner_manager, transaction};
 use anchor_lang::prelude::Pubkey;
-use anchor_lang::solana_program::{self,instruction::Instruction};
+use anchor_lang::solana_program::{self, instruction::Instruction};
 use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::str::FromStr;
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    static ref TIMESTAMP: Mutex<i64> = Mutex::new(0);
+}
+
+pub fn set_timestamp(value: i64) {
+    *TIMESTAMP.lock().unwrap() = value;
+}
+
+pub fn get_timestamp() -> i64 {
+    *TIMESTAMP.lock().unwrap()
+}
+
+pub fn get_binary_base_path() -> String {
+    let result = std::env::var("SOLANA_BIN_PATH");
+    match result {
+        Ok(path) => path,
+        Err(_) => "./solana_smart_contract_bin/".to_string(),
+    }
+}
 
 pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
     assert!(
@@ -39,9 +58,7 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
         .trim()
         .parse()
         .expect("Timestamp is not an integer");
-    unsafe {
-        crate::anchor_lang::TIMESTAMP = timestamp;
-    }
+    set_timestamp(timestamp);
 
     let caller_program_id = get_read_line();
     let caller_program_id = Pubkey::new(&caller_program_id);
@@ -57,7 +74,7 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
 
     let pda_signature: Vec<&[&[u8]]> = pda_signature.iter().map(|x| x.as_slice()).collect();
     let pda_signature: &[&[&[u8]]] = pda_signature.as_slice();
-   
+
     cpi::check_signature(&caller_program_id, &instruction, &pda_signature);
 
     println!("CPI accounts: {:?}", pubkeys);
@@ -122,10 +139,8 @@ fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<
         .trim()
         .parse()
         .expect("Timestamp is not an integer");
-    unsafe {
-        crate::anchor_lang::TIMESTAMP = timestamp;
-    }
-
+    set_timestamp(timestamp);
+    
     return parse_processor_args(
         &payload[..(&payload.len() - 1)],
         &msg_sender[..(&msg_sender.len() - 1)],
@@ -144,7 +159,9 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
             SmartContractType::ExternalPI => get_processor_args_from_external(),
             SmartContractType::CPI => get_processor_args_from_cpi(),
         };
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id: tuple.0.clone() }));
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
+            program_id: tuple.0.clone(),
+        }));
         tuple
     }
 }
@@ -204,9 +221,7 @@ fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
         .trim()
         .parse()
         .expect("Timestamp is not an integer");
-    unsafe {
-        crate::anchor_lang::TIMESTAMP = timestamp;
-    }
+    set_timestamp(timestamp);
 
     call_smart_contract_base64(
         &payload[..(&payload.len() - 1)],
@@ -288,7 +303,7 @@ pub fn parse_processor_args<'a>(
     let mut accounts: Vec<AccountInfo> = vec![];
     for key in tx.message.account_keys.iter() {
         let (data, lamports, owner) = load_account_info_data(&key);
-        create_account_info(key, true, true, lamports, data, owner, true);
+        create_account_info(&key, true, true, lamports, data, owner, true);
     }
     account_manager::clear();
     let pidx: usize = (tx_instruction.program_id_index).into();
@@ -308,7 +323,7 @@ pub fn parse_processor_args<'a>(
         let is_writable = true; // todo
         let executable = true;
         let account_info = create_account_info(
-            key,
+            &key,
             is_signer,
             is_writable,
             lamports,

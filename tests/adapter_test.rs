@@ -15,10 +15,10 @@ use anchor_lang::{
 
 use cartesi_solana::{
     adapter::{call_smart_contract_base64, eth_address_to_pubkey, parse_processor_args, persist_accounts},
-    owner_manager, transaction, account_manager,
+    owner_manager, transaction::{self, Signature}, account_manager,
 };
 
-use cartesi_solana::{anchor_lang::solana_program::hash::Hash, transaction::Signature};
+use solana_program::{hash::Hash};
 
 fn setup() {
     println!("\n\n***** setup *****\n");

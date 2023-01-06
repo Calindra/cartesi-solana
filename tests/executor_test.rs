@@ -2,8 +2,7 @@ use anchor_lang::prelude::{AccountInfo, AccountMeta, Pubkey};
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},
-    adapter::load_account_info_data,
-    anchor_lang::solana_program,
+    adapter::{load_account_info_data, self},
     cartesi_stub::AccountInfoSerialize,
     executor::{DefaultStdin, Executor, LineReader},
     owner_manager,
@@ -67,6 +66,7 @@ fn executor_should_load_program_args() {
         );
         assert_eq!(accounts.len(), 6);
         assert_eq!(data, &[141, 132, 233, 130, 168, 183, 10, 119]);
+        assert_eq!(adapter::get_timestamp(), 12345);
     });
 }
 

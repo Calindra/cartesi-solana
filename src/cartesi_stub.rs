@@ -7,14 +7,17 @@ use std::{
 };
 
 use anchor_lang::{
-    prelude::{AccountInfo, ProgramError, Pubkey, Clock},
-    solana_program::{instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch},
+    prelude::{AccountInfo, Clock, ProgramError, Pubkey, Rent},
+    solana_program::{
+        self, instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch,
+    },
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
     account_manager::{create_account_manager, set_data},
-    anchor_lang::{TIMESTAMP, solana_program, prelude::Rent}, owner_manager, cpi,
+    adapter::{self},
+    cpi, owner_manager,
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -30,7 +33,7 @@ pub struct AccountInfoSerialize {
 }
 
 fn execute_spawn(program_id: String) -> Child {
-    let path = Path::new("./solana_smart_contract_bin/").join(&program_id);
+    let path = Path::new(&adapter::get_binary_base_path()).join(&program_id);
 
     if !path.exists() {
         panic!("failed to find program path [{}]", path.display());
@@ -58,11 +61,18 @@ fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
 
         match account_data {
             Ok(account_data) => {
-                println!("  refresh key {:?}; data.len() = {}", account_info.key, account_data.data.len());
+                println!(
+                    "  refresh key {:?}; data.len() = {}",
+                    account_info.key,
+                    account_data.data.len()
+                );
                 set_data(account_info, account_data.data);
                 **account_info.try_borrow_mut_lamports()? = account_data.lamports;
                 if account_info.owner != &account_data.owner {
-                    owner_manager::change_owner(account_info.key.clone(), account_data.owner.to_owned());
+                    owner_manager::change_owner(
+                        account_info.key.clone(),
+                        account_data.owner.to_owned(),
+                    );
                 }
             }
             Err(_) => {
@@ -79,9 +89,7 @@ pub struct CartesiStubs {
 }
 impl SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
-        // let account_manager = create_account_manager();
-
-        let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
+        let path = Path::new(&adapter::get_binary_base_path()).join("return_data.out");
 
         let program_id = self.program_id.to_string();
 
@@ -92,7 +100,7 @@ impl SyscallStubs for CartesiStubs {
     }
 
     fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
-        let path = Path::new("./solana_smart_contract_bin/").join("return_data.out");
+        let path = Path::new(&adapter::get_binary_base_path()).join("return_data.out");
 
         if !path.exists() {
             return None;
@@ -118,7 +126,7 @@ impl SyscallStubs for CartesiStubs {
         signers_seeds: &[&[&[u8]]],
     ) -> Result<(), ProgramError> {
         cpi::check_signature(&self.program_id, instruction, signers_seeds);
-        
+
         let mut child = execute_spawn(instruction.program_id.to_string());
         let child_stdin = child.stdin.as_mut().unwrap();
 
@@ -158,9 +166,8 @@ impl SyscallStubs for CartesiStubs {
         child_stdin.write_all(signers_seeds.as_bytes())?;
         child_stdin.write_all(b"\n")?;
 
-        unsafe {
-            child_stdin.write_all(TIMESTAMP.to_string().as_bytes())?;
-        }
+        child_stdin.write_all(adapter::get_timestamp().to_string().as_bytes())?;
+
         child_stdin.write_all(b"\n")?;
 
         child_stdin.write_all(program_id_serialized.as_bytes())?;
@@ -195,8 +202,7 @@ impl SyscallStubs for CartesiStubs {
 
     fn sol_get_rent_sysvar(&self, var_addr: *mut u8) -> u64 {
         unsafe {
-            // *(var_addr as *mut _ as *mut Rent) = Rent::default();
-            *(var_addr as *mut _ as *mut solana_program::rent::Rent) = Rent::default();
+            *(var_addr as *mut _ as *mut Rent) = Rent::default();
         }
         solana_program::entrypoint::SUCCESS
     }
@@ -205,10 +211,10 @@ impl SyscallStubs for CartesiStubs {
         unsafe {
             *(var_addr as *mut _ as *mut Clock) = Clock {
                 slot: 1,
-                epoch_start_timestamp: crate::anchor_lang::TIMESTAMP,
+                epoch_start_timestamp: crate::adapter::get_timestamp(),
                 epoch: 1,
                 leader_schedule_epoch: 1,
-                unix_timestamp: crate::anchor_lang::TIMESTAMP,
+                unix_timestamp: crate::adapter::get_timestamp(),
             };
         }
         solana_program::entrypoint::SUCCESS

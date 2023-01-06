@@ -1,3 +1,4 @@
+use anchor_lang::solana_program;
 /**
  * Copy from solana just to deserialize de input
  */
@@ -6,8 +7,6 @@ use solana_program::message::Message;
 use serde::Serialize;
 use serde::Deserialize;
 use solana_program::short_vec;
-
-use crate::anchor_lang::solana_program;
 
 #[derive(Serialize, Deserialize)]
 pub struct Signature(GenericArray<u8, U64>);

@@ -4,13 +4,12 @@ use std::{
     rc::Rc,
 };
 
-use anchor_lang::prelude::{AccountInfo, Pubkey};
+use anchor_lang::{prelude::{AccountInfo, Pubkey}, solana_program};
 use solana_sdk::instruction::{CompiledInstruction, Instruction};
 
 use crate::{
     account_manager::{self, create_account_manager, AccountFileData},
-    adapter::{check_header, check_signer_by_sender, load_account_info_data},
-    anchor_lang::solana_program,
+    adapter::{check_header, check_signer_by_sender, load_account_info_data, set_timestamp},
     cartesi_stub::{AccountInfoSerialize, CartesiStubs},
     cpi, owner_manager, transaction,
 };
@@ -76,9 +75,7 @@ where
             .trim()
             .parse()
             .expect("Timestamp is not an integer");
-        unsafe {
-            crate::anchor_lang::TIMESTAMP = timestamp;
-        }
+        set_timestamp(timestamp);
     }
 
     fn read_transaction(&mut self) -> transaction::Transaction {
@@ -161,6 +158,10 @@ where
         caller_program_id
     }
 
+    fn setup_cartesi_stubs(&mut self, program_id: Pubkey) {
+        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id }));
+    }
+
     fn handle_cpi_call<F>(&mut self, closure_fn: F)
     where
         F: for<'b> Fn(&'b Pubkey, &'b Vec<AccountInfo<'b>>, &'b Vec<u8>),
@@ -213,10 +214,8 @@ where
             let p: *mut &Pubkey = std::ptr::addr_of_mut!(accounts[j].owner);
             owner_manager::add_ptr(p as *mut Pubkey, accounts[j].key.clone());
         }
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
-            program_id: instruction.program_id.clone(),
-        }));
-        
+        self.setup_cartesi_stubs(instruction.program_id.clone());
+
         closure_fn(&instruction.program_id, &accounts, &instruction.data);
         let new_owners: Vec<Pubkey> = accounts
             .iter()
@@ -252,9 +251,7 @@ where
         let tx_instruction = &tx.message.instructions[instruction_index];
         let pidx: usize = (tx_instruction.program_id_index).into();
         let program_id: &Pubkey = &tx.message.account_keys[pidx];
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
-            program_id: program_id.clone(),
-        }));
+        self.setup_cartesi_stubs(program_id.clone());
 
         self.program_id = Some(program_id.to_owned());
         let program_id = self.program_id.unwrap();
