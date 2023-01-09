@@ -1,4 +1,4 @@
-use anchor_lang::prelude::{AccountInfo, AccountMeta, Pubkey};
+use anchor_lang::{prelude::{AccountInfo, AccountMeta, Pubkey}, solana_program};
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},

@@ -17,8 +17,8 @@ use cartesi_solana::{
     adapter::{call_smart_contract_base64, eth_address_to_pubkey, parse_processor_args, persist_accounts},
     owner_manager, transaction::{self, Signature}, account_manager,
 };
+use solana_sdk::hash::Hash;
 
-use solana_program::{hash::Hash};
 
 fn setup() {
     println!("\n\n***** setup *****\n");

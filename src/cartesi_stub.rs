@@ -95,8 +95,8 @@ impl SyscallStubs for CartesiStubs {
 
         let data = base64::encode(data);
 
-        fs::write(path, format!("{}\n{}", program_id, data))
-            .expect("failed to write return data file");
+        fs::write(&path, format!("{}\n{}", program_id, data))
+            .expect(&format!("failed to write return data file: [{:?}]", &path));
     }
 
     fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {

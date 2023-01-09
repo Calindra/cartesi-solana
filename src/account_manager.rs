@@ -209,9 +209,17 @@ impl AccountManager {
         &self,
         file_path: String,
     ) -> std::result::Result<AccountFileData, Box<dyn std::error::Error>> {
-        let contents = fs::read_to_string(file_path)?;
-        let account = serde_json::from_str::<AccountFileData>(&contents)?;
-        Ok(account)
+        let read = fs::read_to_string(&file_path);
+        match read {
+            Ok(contents) => {
+                let account = serde_json::from_str::<AccountFileData>(&contents)?;
+                Ok(account)
+            }
+            Err(error) => {
+                println!("Account not found: {:?}", file_path);
+                Err(Box::new(error))
+            },
+        }
     }
 
     pub fn delete_account(
