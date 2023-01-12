@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use anchor_lang::{prelude::{AccountInfo, Pubkey}, solana_program};
+use solana_program::{pubkey::Pubkey, account_info::AccountInfo};
 use solana_sdk::instruction::{CompiledInstruction, Instruction};
 
 use crate::{

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc, str::FromStr};
 
-use anchor_lang::prelude::{AccountInfo, Pubkey};
 use cartesi_solana::owner_manager;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 fn entry(accounts: &[AccountInfo]) {
     println!(" owner == {:?}", accounts[0].owner);
@@ -34,7 +34,8 @@ fn it_should_change_the_account_owner() {
     println!("\n address {:?}", p);
     owner_manager::add_ptr(p as *mut Pubkey, *key);
 
-    let new_owner: Pubkey = Pubkey::from_str("EwiqbApgaLT2kQaohqZnSXT9HbkMQWDektXEjXGMJyJv").unwrap();
+    let new_owner: Pubkey =
+        Pubkey::from_str("EwiqbApgaLT2kQaohqZnSXT9HbkMQWDektXEjXGMJyJv").unwrap();
     owner_manager::change_owner(key.clone(), new_owner);
     assert_eq!(
         accounts[0].owner.to_string(),

@@ -1,8 +1,8 @@
-use anchor_lang::prelude::AccountInfo;
-use anchor_lang::prelude::Pubkey;
 use borsh::BorshSerialize;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use solana_program::account_info::AccountInfo;
+use solana_program::pubkey::Pubkey;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind::NotFound;

@@ -1,8 +1,9 @@
+
 /// Cross-Program Invocations
 ///
-use anchor_lang::{
-    prelude::{AccountMeta, Pubkey},
-    solana_program::instruction::Instruction,
+use solana_program::{
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
 };
 
 pub fn check_signature(

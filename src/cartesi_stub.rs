@@ -6,13 +6,10 @@ use std::{
     str::FromStr,
 };
 
-use anchor_lang::{
-    prelude::{AccountInfo, Clock, ProgramError, Pubkey, Rent},
-    solana_program::{
-        self, instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch,
-    },
-};
 use serde::{Deserialize, Serialize};
+use solana_program::{
+    self, instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch, pubkey::Pubkey, account_info::AccountInfo, program_error::ProgramError, rent::Rent, clock::Clock,
+};
 
 use crate::{
     account_manager::{create_account_manager, set_data},

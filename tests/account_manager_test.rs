@@ -1,7 +1,7 @@
 use std::{time::{SystemTime, UNIX_EPOCH}, fs, str::FromStr, cell::RefCell, rc::Rc};
 
-use anchor_lang::prelude::{Pubkey, AccountInfo};
 use cartesi_solana::{owner_manager, account_manager::{create_account_manager, AccountFileData, self}};
+use solana_program::{pubkey::Pubkey, account_info::AccountInfo};
 
 fn setup() {
     println!("\n\n***** setup *****\n");

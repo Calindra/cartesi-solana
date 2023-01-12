@@ -1,6 +1,7 @@
-use anchor_lang::prelude::{AccountInfo, Pubkey};
 use borsh::BorshSerialize;
 use cartesi_solana::account_manager::{self, create_account_info, serialize_with_padding};
+use solana_program::account_info::AccountInfo;
+use solana_program::pubkey::Pubkey;
 use solana_sdk::{account::Account as Acc, account::AccountSharedData, account_info::Account};
 use std::io::Write;
 use std::str::FromStr;

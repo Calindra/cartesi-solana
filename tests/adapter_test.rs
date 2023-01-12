@@ -4,19 +4,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use anchor_lang::{
-    prelude::{AccountInfo, Pubkey},
-    solana_program::{
-        entrypoint::ProgramResult,
-        instruction::CompiledInstruction,
-        message::{Message, MessageHeader},
-    },
-};
 
 use cartesi_solana::{
     adapter::{call_smart_contract_base64, eth_address_to_pubkey, parse_processor_args, persist_accounts},
     owner_manager, transaction::{self, Signature}, account_manager,
 };
+use solana_program::{message::{MessageHeader, Message}, pubkey::Pubkey, instruction::CompiledInstruction, account_info::AccountInfo, entrypoint::ProgramResult};
 use solana_sdk::hash::Hash;
 
 

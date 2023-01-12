@@ -1,4 +1,5 @@
-use anchor_lang::prelude::{msg, Pubkey};
+use solana_program::{pubkey::Pubkey, msg};
+
 
 static mut OWNERS: Vec<Pubkey> = Vec::new();
 static mut POINTERS: Vec<(*mut &Pubkey, Pubkey)> = Vec::new();

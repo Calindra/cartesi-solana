@@ -1,10 +1,11 @@
 use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData};
 use crate::cartesi_stub::{AccountInfoSerialize, CartesiStubs};
 use crate::{cpi, owner_manager, transaction};
-use anchor_lang::prelude::Pubkey;
-use anchor_lang::solana_program::{self, instruction::Instruction};
-use anchor_lang::{prelude::AccountInfo, solana_program::entrypoint::ProgramResult};
 use serde::{Deserialize, Serialize};
+use solana_program::account_info::AccountInfo;
+use solana_program::entrypoint::ProgramResult;
+use solana_program::instruction::Instruction;
+use solana_program::pubkey::Pubkey;
 use std::io;
 use std::str::FromStr;
 use std::sync::Mutex;

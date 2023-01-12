@@ -1,13 +1,13 @@
-use anchor_lang::{prelude::{AccountInfo, AccountMeta, Pubkey}, solana_program};
 use borsh::BorshSerialize;
 use cartesi_solana::{
     account_manager::{self, create_account_manager, AccountFileData},
-    adapter::{load_account_info_data, self},
+    adapter::{self, load_account_info_data},
     cartesi_stub::AccountInfoSerialize,
     executor::{DefaultStdin, Executor, LineReader},
     owner_manager,
     transaction::{self, Signature},
 };
+use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
 use solana_sdk::{
     hash::Hash,
     instruction::CompiledInstruction,

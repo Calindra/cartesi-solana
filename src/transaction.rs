@@ -1,4 +1,3 @@
-use anchor_lang::solana_program;
 /**
  * Copy from solana just to deserialize de input
  */

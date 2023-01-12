@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
-use anchor_lang::{prelude::Pubkey, solana_program::{system_instruction::transfer}};
 use cartesi_solana::cpi::check_signature;
+use solana_program::{pubkey::Pubkey, system_instruction::transfer};
 
 #[test]
 fn cpi_it_should_verify_the_signature_success() {
@@ -10,10 +10,7 @@ fn cpi_it_should_verify_the_signature_success() {
     let seeds = &[b"escrow".as_ref()];
     let (escrow_pubkey, bump) = Pubkey::find_program_address(seeds, &program_id);
 
-    let pda_signature = &[
-        b"escrow".as_ref(),
-        &[bump]
-    ];
+    let pda_signature = &[b"escrow".as_ref(), &[bump]];
     // Create the transfer instruction
     let instruction = transfer(&escrow_pubkey, &alice_pubkey, 1);
 
@@ -29,14 +26,11 @@ fn cpi_it_should_verify_the_signature_fail() {
     let seeds = &[b"escrow".as_ref()];
     let (escrow_pubkey, bump) = Pubkey::find_program_address(seeds, &program_id);
 
-    let pda_signature = &[
-        b"escrow".as_ref(),
-        &[bump]
-    ];
+    let pda_signature = &[b"escrow".as_ref(), &[bump]];
     // Create the transfer instruction
     let instruction = transfer(&escrow_pubkey, &alice_pubkey, 1);
 
-    let signer_program_id = Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
+    let signer_program_id =
+        Pubkey::from_str("6Tw6Z6SsM3ypmGsB3vpSx8midhhyTvTwdPd7K413LyyY").unwrap();
     check_signature(&signer_program_id, &instruction, &[pda_signature]);
 }
-
