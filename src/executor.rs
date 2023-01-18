@@ -243,6 +243,11 @@ where
         data_holder
     }
 
+    fn is_executable(&mut self, program_id: &Pubkey) -> bool {
+        let path = std::path::Path::new(&crate::adapter::get_binary_base_path()).join(program_id.to_string());
+        path.exists()
+    }
+
     fn handle_external_call<F>(&'a mut self, closure_fn: F)
     where
         F: for<'b> Fn(&'b Pubkey, &'b Vec<AccountInfo<'b>>, &'b Vec<u8>),
@@ -273,7 +278,7 @@ where
                 lamports: Rc::new(RefCell::new(&mut holder.lamports)),
                 data: Rc::new(RefCell::new(&mut holder.data)),
                 owner: &holder.owner,
-                executable: false,
+                executable: self.is_executable(key),
                 rent_epoch: 1,
             };
             accounts.push(account_info);
