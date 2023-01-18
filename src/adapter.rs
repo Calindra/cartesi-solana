@@ -1,5 +1,5 @@
 use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData};
-use crate::cartesi_stub::{AccountInfoSerialize, CartesiStubs};
+use crate::cartesi_stub::AccountInfoSerialize;
 use crate::{cpi, owner_manager, transaction};
 use serde::{Deserialize, Serialize};
 use solana_program::account_info::AccountInfo;
@@ -59,16 +59,16 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     let instruction = get_read_line();
     let accounts = get_read_line();
     let signers_seed = get_read_line();
-    let mut timestamp = String::new();
-
     #[cfg(not(target_arch = "bpf"))]
-    io::stdin().read_line(&mut timestamp).unwrap();
-
-    let timestamp: i64 = timestamp
-        .trim()
-        .parse()
-        .expect("Timestamp is not an integer");
-    set_timestamp(timestamp);
+    {
+        let mut timestamp = String::new();
+        io::stdin().read_line(&mut timestamp).unwrap();
+        let timestamp: i64 = timestamp
+            .trim()
+            .parse()
+            .expect("Timestamp is not an integer");
+        set_timestamp(timestamp);
+    }
 
     let caller_program_id = get_read_line();
     let caller_program_id = Pubkey::new(&caller_program_id);
@@ -131,22 +131,19 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     )
 }
 
+#[cfg(not(target_arch = "bpf"))]
 fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     let mut msg_sender = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut msg_sender).unwrap();
     let mut payload = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut payload).unwrap();
     let mut instruction_index = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut instruction_index).unwrap();
     let instruction_index: usize = instruction_index
         .trim()
         .parse()
         .expect("Input is not an integer");
     let mut timestamp = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut timestamp).unwrap();
 
     let timestamp: i64 = timestamp
@@ -173,9 +170,11 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
             SmartContractType::ExternalPI => get_processor_args_from_external(),
             SmartContractType::CPI => get_processor_args_from_cpi(),
         };
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
-            program_id: tuple.0.clone(),
-        }));
+        solana_program::program_stubs::set_syscall_stubs(Box::new(
+            crate::cartesi_stub::CartesiStubs {
+                program_id: tuple.0.clone(),
+            },
+        ));
         tuple
     }
     #[cfg(target_arch = "bpf")]
@@ -219,24 +218,21 @@ pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<()> {
     Ok(())
 }
 
-fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
+#[cfg(not(target_arch = "bpf"))]
+fn call_solana_program_external(_entry: SolanaEntrypoint) -> io::Result<()> {
     let mut msg_sender = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut msg_sender)?;
 
     let mut payload = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut payload)?;
 
     let mut instruction_index = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut instruction_index)?;
     let instruction_index: usize = instruction_index
         .trim()
         .parse()
         .expect("Input is not an integer");
     let mut timestamp = String::new();
-    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut timestamp)?;
 
     let timestamp: i64 = timestamp
@@ -249,13 +245,13 @@ fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
         &payload[..(&payload.len() - 1)],
         &msg_sender[..(&msg_sender.len() - 1)],
         instruction_index,
-        entry,
+        _entry,
     );
 
     Ok(())
 }
 
-pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
+pub fn call_solana_program(_entry: SolanaEntrypoint) -> io::Result<()> {
     #[cfg(not(target_arch = "bpf"))]
     {
         let mut header = String::new();
@@ -263,10 +259,10 @@ pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
 
         match check_header(&header) {
             SmartContractType::CPI => {
-                call_solana_cpi(entry)?;
+                call_solana_cpi(_entry)?;
             }
             SmartContractType::ExternalPI => {
-                call_solana_program_external(entry)?;
+                call_solana_program_external(_entry)?;
             }
         }
     }
