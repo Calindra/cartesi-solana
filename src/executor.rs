@@ -4,13 +4,16 @@ use std::{
     rc::Rc,
 };
 
-use solana_program::{pubkey::Pubkey, account_info::AccountInfo};
-use solana_sdk::instruction::{CompiledInstruction, Instruction};
+use solana_program::{
+    account_info::AccountInfo,
+    instruction::{CompiledInstruction, Instruction},
+    pubkey::Pubkey,
+};
 
 use crate::{
     account_manager::{self, create_account_manager, AccountFileData},
     adapter::{check_header, check_signer_by_sender, load_account_info_data, set_timestamp},
-    cartesi_stub::{AccountInfoSerialize, CartesiStubs},
+    cartesi_stub::{AccountInfoSerialize},
     cpi, owner_manager, transaction,
 };
 
@@ -158,8 +161,9 @@ where
         caller_program_id
     }
 
-    fn setup_cartesi_stubs(&mut self, program_id: Pubkey) {
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id }));
+    fn setup_cartesi_stubs(&mut self, _program_id: Pubkey) {
+        #[cfg(not(target_arch = "bpf"))]
+        solana_program::program_stubs::set_syscall_stubs(Box::new(crate::cartesi_stub::CartesiStubs { program_id: _program_id }));
     }
 
     fn handle_cpi_call<F>(&mut self, closure_fn: F)
@@ -331,7 +335,14 @@ pub trait LineReader {
 pub struct DefaultStdin {}
 
 impl LineReader for DefaultStdin {
-    fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
-        return std::io::stdin().read_line(buf);
+    fn read_line(&mut self, _buf: &mut String) -> io::Result<usize> {
+        #[cfg(not(target_arch = "bpf"))]
+        {
+            return std::io::stdin().read_line(_buf);
+        }
+        #[cfg(target_arch = "bpf")]
+        {
+            return io::Result::Ok(0);
+        }
     }
 }

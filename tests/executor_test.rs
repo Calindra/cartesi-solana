@@ -8,7 +8,7 @@ use cartesi_solana::{
     transaction::{self, Signature},
 };
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
-use solana_sdk::{
+use solana_program::{
     hash::Hash,
     instruction::CompiledInstruction,
     message::{Message, MessageHeader},

@@ -1,5 +1,5 @@
 use crate::account_manager::{self, create_account_info, create_account_manager, AccountFileData};
-use crate::cartesi_stub::{AccountInfoSerialize, CartesiStubs};
+use crate::cartesi_stub::AccountInfoSerialize;
 use crate::{cpi, owner_manager, transaction};
 use serde::{Deserialize, Serialize};
 use solana_program::account_info::AccountInfo;
@@ -43,23 +43,32 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
 }
 
 fn get_read_line() -> Vec<u8> {
-    let mut line = String::new();
-    io::stdin().read_line(&mut line).unwrap();
-    base64::decode(&line.trim()).unwrap()
+    #[cfg(not(target_arch = "bpf"))]
+    {
+        let mut line = String::new();
+        io::stdin().read_line(&mut line).unwrap();
+        base64::decode(&line.trim()).unwrap()
+    }
+    #[cfg(target_arch = "bpf")]
+    {
+        vec![]
+    }
 }
 
 fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     let instruction = get_read_line();
     let accounts = get_read_line();
     let signers_seed = get_read_line();
-    let mut timestamp = String::new();
-    io::stdin().read_line(&mut timestamp).unwrap();
-
-    let timestamp: i64 = timestamp
-        .trim()
-        .parse()
-        .expect("Timestamp is not an integer");
-    set_timestamp(timestamp);
+    #[cfg(not(target_arch = "bpf"))]
+    {
+        let mut timestamp = String::new();
+        io::stdin().read_line(&mut timestamp).unwrap();
+        let timestamp: i64 = timestamp
+            .trim()
+            .parse()
+            .expect("Timestamp is not an integer");
+        set_timestamp(timestamp);
+    }
 
     let caller_program_id = get_read_line();
     let caller_program_id = Pubkey::new(&caller_program_id);
@@ -122,6 +131,7 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     )
 }
 
+#[cfg(not(target_arch = "bpf"))]
 fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     let mut msg_sender = String::new();
     io::stdin().read_line(&mut msg_sender).unwrap();
@@ -141,7 +151,7 @@ fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<
         .parse()
         .expect("Timestamp is not an integer");
     set_timestamp(timestamp);
-    
+
     return parse_processor_args(
         &payload[..(&payload.len() - 1)],
         &msg_sender[..(&msg_sender.len() - 1)],
@@ -160,10 +170,16 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
             SmartContractType::ExternalPI => get_processor_args_from_external(),
             SmartContractType::CPI => get_processor_args_from_cpi(),
         };
-        solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs {
-            program_id: tuple.0.clone(),
-        }));
+        solana_program::program_stubs::set_syscall_stubs(Box::new(
+            crate::cartesi_stub::CartesiStubs {
+                program_id: tuple.0.clone(),
+            },
+        ));
         tuple
+    }
+    #[cfg(target_arch = "bpf")]
+    {
+        (Pubkey::default(), vec![], vec![], false)
     }
 }
 
@@ -202,7 +218,8 @@ pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<()> {
     Ok(())
 }
 
-fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
+#[cfg(not(target_arch = "bpf"))]
+fn call_solana_program_external(_entry: SolanaEntrypoint) -> io::Result<()> {
     let mut msg_sender = String::new();
     io::stdin().read_line(&mut msg_sender)?;
 
@@ -228,13 +245,13 @@ fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
         &payload[..(&payload.len() - 1)],
         &msg_sender[..(&msg_sender.len() - 1)],
         instruction_index,
-        entry,
+        _entry,
     );
 
     Ok(())
 }
 
-pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
+pub fn call_solana_program(_entry: SolanaEntrypoint) -> io::Result<()> {
     #[cfg(not(target_arch = "bpf"))]
     {
         let mut header = String::new();
@@ -242,10 +259,10 @@ pub fn call_solana_program(entry: SolanaEntrypoint) -> io::Result<()> {
 
         match check_header(&header) {
             SmartContractType::CPI => {
-                call_solana_cpi(entry)?;
+                call_solana_cpi(_entry)?;
             }
             SmartContractType::ExternalPI => {
-                call_solana_program_external(entry)?;
+                call_solana_program_external(_entry)?;
             }
         }
     }

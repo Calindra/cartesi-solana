@@ -1,21 +1,5 @@
-use std::{
-    fs::{self},
-    io::Write,
-    path::Path,
-    process::{Child, Command, Stdio},
-    str::FromStr,
-};
-
 use serde::{Deserialize, Serialize};
-use solana_program::{
-    self, instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch, pubkey::Pubkey, account_info::AccountInfo, program_error::ProgramError, rent::Rent, clock::Clock,
-};
-
-use crate::{
-    account_manager::{create_account_manager, set_data},
-    adapter::{self},
-    cpi, owner_manager,
-};
+use solana_program::{self, pubkey::Pubkey, stake_history::Epoch};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AccountInfoSerialize {
@@ -29,14 +13,17 @@ pub struct AccountInfoSerialize {
     pub rent_epoch: Epoch,
 }
 
-fn execute_spawn(program_id: String) -> Child {
-    let path = Path::new(&adapter::get_binary_base_path()).join(&program_id);
+#[cfg(not(target_arch = "bpf"))]
+fn execute_spawn(program_id: String) -> std::process::Child {
+    let path = std::path::Path::new(&crate::adapter::get_binary_base_path()).join(&program_id);
 
     if !path.exists() {
         panic!("failed to find program path [{}]", path.display());
     }
 
-    let exec = Command::new(&path).stdin(Stdio::piped()).spawn();
+    let exec = std::process::Command::new(&path)
+        .stdin(std::process::Stdio::piped())
+        .spawn();
 
     match exec {
         Ok(child) => child,
@@ -49,8 +36,9 @@ fn execute_spawn(program_id: String) -> Child {
     }
 }
 
-fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
-    let account_manager = create_account_manager();
+#[cfg(not(target_arch = "bpf"))]
+fn refresh_accounts(accounts: &[solana_program::account_info::AccountInfo]) -> Result<(), solana_program::program_error::ProgramError> {
+    let account_manager = crate::account_manager::create_account_manager();
     println!("refresh_accounts {:?}", account_manager);
 
     for account_info in accounts.iter() {
@@ -63,10 +51,10 @@ fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
                     account_info.key,
                     account_data.data.len()
                 );
-                set_data(account_info, account_data.data);
+                crate::account_manager::set_data(account_info, account_data.data);
                 **account_info.try_borrow_mut_lamports()? = account_data.lamports;
                 if account_info.owner != &account_data.owner {
-                    owner_manager::change_owner(
+                    crate::owner_manager::change_owner(
                         account_info.key.clone(),
                         account_data.owner.to_owned(),
                     );
@@ -84,31 +72,33 @@ fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
 pub struct CartesiStubs {
     pub program_id: Pubkey,
 }
-impl SyscallStubs for CartesiStubs {
+
+#[cfg(not(target_arch = "bpf"))]
+impl solana_program::program_stubs::SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
-        let path = Path::new(&adapter::get_binary_base_path()).join("return_data.out");
+        let path = std::path::Path::new(&crate::adapter::get_binary_base_path()).join("return_data.out");
 
         let program_id = self.program_id.to_string();
 
         let data = base64::encode(data);
 
-        fs::write(&path, format!("{}\n{}", program_id, data))
+        std::fs::write(&path, format!("{}\n{}", program_id, data))
             .expect(&format!("failed to write return data file: [{:?}]", &path));
     }
 
     fn sol_get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
-        let path = Path::new(&adapter::get_binary_base_path()).join("return_data.out");
+        let path = std::path::Path::new(&crate::adapter::get_binary_base_path()).join("return_data.out");
 
         if !path.exists() {
             return None;
         }
 
-        let bundle = fs::read_to_string(path).expect("failed to read return data file");
+        let bundle = std::fs::read_to_string(path).expect("failed to read return data file");
 
         let mut bundle = bundle.split("\n");
 
         let program_id = bundle.next().unwrap();
-        let program_id = Pubkey::from_str(&program_id).unwrap();
+        let program_id = <Pubkey as std::str::FromStr>::from_str(&program_id).unwrap();
 
         let data = bundle.next().unwrap();
         let data = base64::decode(data).unwrap();
@@ -118,11 +108,11 @@ impl SyscallStubs for CartesiStubs {
 
     fn sol_invoke_signed(
         &self,
-        instruction: &Instruction,
-        account_infos: &[AccountInfo], // chaves publicas
+        instruction: &solana_program::instruction::Instruction,
+        account_infos: &[solana_program::account_info::AccountInfo], // chaves publicas
         signers_seeds: &[&[&[u8]]],
-    ) -> Result<(), ProgramError> {
-        cpi::check_signature(&self.program_id, instruction, signers_seeds);
+    ) -> Result<(), solana_program::program_error::ProgramError> {
+        crate::cpi::check_signature(&self.program_id, instruction, signers_seeds);
 
         let mut child = execute_spawn(instruction.program_id.to_string());
         let child_stdin = child.stdin.as_mut().unwrap();
@@ -153,22 +143,22 @@ impl SyscallStubs for CartesiStubs {
         let signers_seeds = bincode::serialize(&signers_seeds).unwrap();
         let signers_seeds = base64::encode(&signers_seeds);
 
-        child_stdin.write_all(b"Header: CPI")?;
-        child_stdin.write_all(b"\n")?;
+        write_all(child_stdin, b"Header: CPI")?;
+        write_all(child_stdin, b"\n")?;
 
-        child_stdin.write_all(instruction.as_bytes())?;
-        child_stdin.write_all(b"\n")?;
-        child_stdin.write_all(account_infos_serialized.as_bytes())?;
-        child_stdin.write_all(b"\n")?;
-        child_stdin.write_all(signers_seeds.as_bytes())?;
-        child_stdin.write_all(b"\n")?;
+        write_all(child_stdin, instruction.as_bytes())?;
+        write_all(child_stdin, b"\n")?;
+        write_all(child_stdin, account_infos_serialized.as_bytes())?;
+        write_all(child_stdin, b"\n")?;
+        write_all(child_stdin, signers_seeds.as_bytes())?;
+        write_all(child_stdin, b"\n")?;
 
-        child_stdin.write_all(adapter::get_timestamp().to_string().as_bytes())?;
+        write_all(child_stdin, crate::adapter::get_timestamp().to_string().as_bytes())?;
 
-        child_stdin.write_all(b"\n")?;
+        write_all(child_stdin, b"\n")?;
 
-        child_stdin.write_all(program_id_serialized.as_bytes())?;
-        child_stdin.write_all(b"\n")?;
+        write_all(child_stdin, program_id_serialized.as_bytes())?;
+        write_all(child_stdin, b"\n")?;
 
         drop(child_stdin);
 
@@ -180,7 +170,7 @@ impl SyscallStubs for CartesiStubs {
         match exit_code {
             None => {
                 println!("Program failed to run");
-                return Err(ProgramError::Custom(1));
+                return Err(solana_program::program_error::ProgramError::Custom(1));
             }
             Some(code) => {
                 if code == 0 {
@@ -189,7 +179,7 @@ impl SyscallStubs for CartesiStubs {
                     println!("Program exited with success code");
                 } else {
                     println!("Program exited with error code: {}", code);
-                    return Err(ProgramError::Custom(1));
+                    return Err(solana_program::program_error::ProgramError::Custom(1));
                 }
             }
         }
@@ -199,21 +189,29 @@ impl SyscallStubs for CartesiStubs {
 
     fn sol_get_rent_sysvar(&self, var_addr: *mut u8) -> u64 {
         unsafe {
-            *(var_addr as *mut _ as *mut Rent) = Rent::default();
+            *(var_addr as *mut _ as *mut solana_program::rent::Rent) =
+                solana_program::rent::Rent::default();
         }
         solana_program::entrypoint::SUCCESS
     }
 
     fn sol_get_clock_sysvar(&self, var_addr: *mut u8) -> u64 {
         unsafe {
-            *(var_addr as *mut _ as *mut Clock) = Clock {
-                slot: 1,
-                epoch_start_timestamp: crate::adapter::get_timestamp(),
-                epoch: 1,
-                leader_schedule_epoch: 1,
-                unix_timestamp: crate::adapter::get_timestamp(),
-            };
+            *(var_addr as *mut _ as *mut solana_program::clock::Clock) =
+                solana_program::clock::Clock {
+                    slot: 1,
+                    epoch_start_timestamp: crate::adapter::get_timestamp(),
+                    epoch: 1,
+                    leader_schedule_epoch: 1,
+                    unix_timestamp: crate::adapter::get_timestamp(),
+                };
         }
         solana_program::entrypoint::SUCCESS
     }
+}
+
+#[cfg(not(target_arch = "bpf"))]
+fn write_all(child_stdin: &mut std::process::ChildStdin, buf: &[u8]) -> Result<(), solana_program::program_error::ProgramError> {
+    std::io::Write::write_all(child_stdin, buf)?;
+    Ok(())
 }

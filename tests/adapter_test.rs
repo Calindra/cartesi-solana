@@ -10,7 +10,7 @@ use cartesi_solana::{
     owner_manager, transaction::{self, Signature}, account_manager,
 };
 use solana_program::{message::{MessageHeader, Message}, pubkey::Pubkey, instruction::CompiledInstruction, account_info::AccountInfo, entrypoint::ProgramResult};
-use solana_sdk::hash::Hash;
+use solana_program::hash::Hash;
 
 
 fn setup() {
