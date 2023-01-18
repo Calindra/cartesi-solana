@@ -43,9 +43,16 @@ pub fn eth_address_to_pubkey(eth_address: &[u8]) -> Pubkey {
 }
 
 fn get_read_line() -> Vec<u8> {
-    let mut line = String::new();
-    io::stdin().read_line(&mut line).unwrap();
-    base64::decode(&line.trim()).unwrap()
+    #[cfg(not(target_arch = "bpf"))]
+    {
+        let mut line = String::new();
+        io::stdin().read_line(&mut line).unwrap();
+        base64::decode(&line.trim()).unwrap()
+    }
+    #[cfg(target_arch = "bpf")]
+    {
+        vec![]
+    }
 }
 
 fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
@@ -53,6 +60,8 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
     let accounts = get_read_line();
     let signers_seed = get_read_line();
     let mut timestamp = String::new();
+
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut timestamp).unwrap();
 
     let timestamp: i64 = timestamp
@@ -124,16 +133,20 @@ fn get_processor_args_from_cpi<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, 
 
 fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool) {
     let mut msg_sender = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut msg_sender).unwrap();
     let mut payload = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut payload).unwrap();
     let mut instruction_index = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut instruction_index).unwrap();
     let instruction_index: usize = instruction_index
         .trim()
         .parse()
         .expect("Input is not an integer");
     let mut timestamp = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut timestamp).unwrap();
 
     let timestamp: i64 = timestamp
@@ -141,7 +154,7 @@ fn get_processor_args_from_external<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<
         .parse()
         .expect("Timestamp is not an integer");
     set_timestamp(timestamp);
-    
+
     return parse_processor_args(
         &payload[..(&payload.len() - 1)],
         &msg_sender[..(&msg_sender.len() - 1)],
@@ -164,6 +177,10 @@ pub fn get_processor_args<'a>() -> (Pubkey, Vec<AccountInfo<'a>>, Vec<u8>, bool)
             program_id: tuple.0.clone(),
         }));
         tuple
+    }
+    #[cfg(target_arch = "bpf")]
+    {
+        (Pubkey::default(), vec![], vec![], false)
     }
 }
 
@@ -204,18 +221,22 @@ pub fn call_solana_cpi(entry: SolanaEntrypoint) -> io::Result<()> {
 
 fn call_solana_program_external(entry: SolanaEntrypoint) -> io::Result<()> {
     let mut msg_sender = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut msg_sender)?;
 
     let mut payload = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut payload)?;
 
     let mut instruction_index = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut instruction_index)?;
     let instruction_index: usize = instruction_index
         .trim()
         .parse()
         .expect("Input is not an integer");
     let mut timestamp = String::new();
+    #[cfg(not(target_arch = "bpf"))]
     io::stdin().read_line(&mut timestamp)?;
 
     let timestamp: i64 = timestamp

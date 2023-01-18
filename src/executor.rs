@@ -4,8 +4,11 @@ use std::{
     rc::Rc,
 };
 
-use solana_program::{pubkey::Pubkey, account_info::AccountInfo};
-use solana_sdk::instruction::{CompiledInstruction, Instruction};
+use solana_program::{
+    account_info::AccountInfo,
+    instruction::{CompiledInstruction, Instruction},
+    pubkey::Pubkey,
+};
 
 use crate::{
     account_manager::{self, create_account_manager, AccountFileData},
@@ -159,6 +162,7 @@ where
     }
 
     fn setup_cartesi_stubs(&mut self, program_id: Pubkey) {
+        #[cfg(not(target_arch = "bpf"))]
         solana_program::program_stubs::set_syscall_stubs(Box::new(CartesiStubs { program_id }));
     }
 
@@ -332,6 +336,13 @@ pub struct DefaultStdin {}
 
 impl LineReader for DefaultStdin {
     fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
-        return std::io::stdin().read_line(buf);
+        #[cfg(not(target_arch = "bpf"))]
+        {
+            return std::io::stdin().read_line(buf);
+        }
+        #[cfg(target_arch = "bpf")]
+        {
+            return io::Result::Ok(0);
+        }
     }
 }

@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use solana_program::{
-    self, instruction::Instruction, program_stubs::SyscallStubs, stake_history::Epoch, pubkey::Pubkey, account_info::AccountInfo, program_error::ProgramError, rent::Rent, clock::Clock,
+    self, instruction::Instruction, stake_history::Epoch, pubkey::Pubkey, account_info::AccountInfo, program_error::ProgramError, rent::Rent, clock::Clock,
 };
 
 use crate::{
@@ -84,7 +84,8 @@ fn refresh_accounts(accounts: &[AccountInfo]) -> Result<(), ProgramError> {
 pub struct CartesiStubs {
     pub program_id: Pubkey,
 }
-impl SyscallStubs for CartesiStubs {
+#[cfg(not(target_arch = "bpf"))]
+impl solana_program::program_stubs::SyscallStubs for CartesiStubs {
     fn sol_set_return_data(&self, data: &[u8]) {
         let path = Path::new(&adapter::get_binary_base_path()).join("return_data.out");
 
